@@ -107,10 +107,16 @@
                             <button onclick="openImageEditorFor('main')" class="absolute top-2 left-2 bg-blue-500 text-white rounded-lg px-2 py-1 text-xs shadow-md hover:bg-blue-600 hidden group-hover:flex items-center gap-1 transition-all z-10">🖌️ Змінити</button>
                             <button id="remove-main-img" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600 font-bold text-xs z-10">✕</button>
                         </div>
-                        <label id="main-photo-label" class="flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 cursor-pointer text-slate-600 font-medium transition-colors">
-                            📷 Додати загальне фото
-                            <input type="file" id="main-photo-input" accept="image/*" class="hidden">
-                        </label>
+                        <div class="flex gap-2">
+                            <label class="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 cursor-pointer text-slate-600 font-bold text-sm transition-colors">
+                                📷 Камера
+                                <input type="file" id="main-photo-camera" accept="image/*" capture="environment" class="hidden">
+                            </label>
+                            <label id="main-photo-label" class="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 cursor-pointer text-slate-600 font-bold text-sm transition-colors">
+                                🖼️ Галерея
+                                <input type="file" id="main-photo-input" accept="image/*" class="hidden">
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -138,10 +144,16 @@
                     </div>
                     
                     <div class="flex flex-wrap gap-2 items-center justify-between mt-3">
-                        <label id="node-photo-label" class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 cursor-pointer font-bold text-sm shadow-sm transition-colors">
-                            📷 Фото вузла
-                            <input type="file" id="node-photo-input" accept="image/*" class="hidden">
-                        </label>
+                        <div class="flex gap-2">
+                            <label class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 cursor-pointer font-bold text-sm shadow-sm transition-colors">
+                                📷 Камера
+                                <input type="file" id="node-photo-camera" accept="image/*" capture="environment" class="hidden">
+                            </label>
+                            <label id="node-photo-label" class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 cursor-pointer font-bold text-sm shadow-sm transition-colors">
+                                🖼️ Галерея
+                                <input type="file" id="node-photo-input" accept="image/*" class="hidden">
+                            </label>
+                        </div>
                         <button id="add-node-btn" class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-all text-sm">Зберегти вузол</button>
                     </div>
                     <div id="node-img-preview-box" class="hidden mt-3 relative inline-block group">
@@ -255,8 +267,13 @@
                 <div id="modal-media-preview" class="hidden flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200"></div>
                 
                 <div class="flex flex-wrap gap-2 items-center">
+                    <label class="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer text-sm font-bold shadow-sm transition-colors text-slate-700">
+                        📷 Камера
+                        <input type="file" id="modal-photo-camera" accept="image/*" capture="environment" class="hidden">
+                    </label>
+
                     <label id="modal-photo-label" class="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer text-sm font-bold shadow-sm transition-colors text-slate-700">
-                        📷 Додати фото
+                        🖼️ Галерея
                         <input type="file" id="modal-photo-input" accept="image/*" multiple class="hidden">
                     </label>
                 </div>
@@ -377,9 +394,9 @@
                 tabEd: document.getElementById('tab-editor'), tabAr: document.getElementById('tab-archive'), tabSet: document.getElementById('tab-settings'),
                 viewEd: document.getElementById('view-editor'), viewAr: document.getElementById('view-archive'), viewSet: document.getElementById('view-settings'),
                 title: document.getElementById('doc-title'), eq: document.getElementById('doc-eq'),
-                mainImgInp: document.getElementById('main-photo-input'), mainImgPrev: document.getElementById('main-image-preview'), mainImgBox: document.getElementById('main-image-preview-container'), removeMainImg: document.getElementById('remove-main-img'),
-                nodesCont: document.getElementById('nodes-container'), nodeTitle: document.getElementById('node-title'), nodeDesc: document.getElementById('node-desc'), nodeImgInp: document.getElementById('node-photo-input'), nodeImgPrevBox: document.getElementById('node-img-preview-box'), nodeImgPrev: document.getElementById('node-img-preview'), removeNodeImg: document.getElementById('remove-node-img'), addNodeBtn: document.getElementById('add-node-btn'),
-                stepModal: document.getElementById('step-modal'), closeStepModal: document.getElementById('close-step-modal'), modalText: document.getElementById('modal-step-text'), modalPhotoInp: document.getElementById('modal-photo-input'), modalMediaPrev: document.getElementById('modal-media-preview'), modalSaveBtn: document.getElementById('modal-save-btn'), modalClearBtn: document.getElementById('modal-clear-btn'),
+                mainImgInp: document.getElementById('main-photo-input'), mainImgCam: document.getElementById('main-photo-camera'), mainImgPrev: document.getElementById('main-image-preview'), mainImgBox: document.getElementById('main-image-preview-container'), removeMainImg: document.getElementById('remove-main-img'),
+                nodesCont: document.getElementById('nodes-container'), nodeTitle: document.getElementById('node-title'), nodeDesc: document.getElementById('node-desc'), nodeImgInp: document.getElementById('node-photo-input'), nodeImgCam: document.getElementById('node-photo-camera'), nodeImgPrevBox: document.getElementById('node-img-preview-box'), nodeImgPrev: document.getElementById('node-img-preview'), removeNodeImg: document.getElementById('remove-node-img'), addNodeBtn: document.getElementById('add-node-btn'),
+                stepModal: document.getElementById('step-modal'), closeStepModal: document.getElementById('close-step-modal'), modalText: document.getElementById('modal-step-text'), modalPhotoInp: document.getElementById('modal-photo-input'), modalPhotoCam: document.getElementById('modal-photo-camera'), modalMediaPrev: document.getElementById('modal-media-preview'), modalSaveBtn: document.getElementById('modal-save-btn'), modalClearBtn: document.getElementById('modal-clear-btn'),
                 setEmail: document.getElementById('set-email'), setDrive: document.getElementById('set-drive'), setPhotoDrive: document.getElementById('set-photo-drive'), setSinglePage: document.getElementById('set-single-page'), setApi: document.getElementById('set-api-key'), saveSetBtn: document.getElementById('save-settings-btn'), checkKeyBtn: document.getElementById('check-key-btn'), keyStatusMsg: document.getElementById('key-status-msg'),
                 testConnBtn: document.getElementById('test-conn-btn'), connStatusMsg: document.getElementById('conn-status-msg'),
                 setLogoInp: document.getElementById('set-logo-input'), setLogoPrev: document.getElementById('set-logo-preview'), setLogoPrevBox: document.getElementById('set-logo-preview-box'), removeLogoBtn: document.getElementById('remove-logo-btn'),
@@ -488,13 +505,38 @@
         }
 
         function setupMediaInputs() {
-            DOM.mainImgInp.onchange = (e) => { processImageFile(e.target.files[0], (dataUrl) => { state.mainImage = dataUrl; DOM.mainImgPrev.src = dataUrl; DOM.mainImgBox.classList.remove('hidden'); saveLocal(); }); };
+            // Два поля на кожне фото: з capture (камера) і без (галерея).
+            // Обробник спільний — різниця лише в тому, що відкриє телефон.
+            const onMainPhoto = (e) => {
+                processImageFile(e.target.files[0], (dataUrl) => {
+                    state.mainImage = dataUrl; DOM.mainImgPrev.src = dataUrl;
+                    DOM.mainImgBox.classList.remove('hidden'); saveLocal();
+                });
+                e.target.value = '';
+            };
+            DOM.mainImgInp.onchange = onMainPhoto;
+            if (DOM.mainImgCam) DOM.mainImgCam.onchange = onMainPhoto;
             DOM.removeMainImg.onclick = () => { state.mainImage = null; DOM.mainImgBox.classList.add('hidden'); DOM.mainImgPrev.src = ''; DOM.mainImgInp.value = ''; saveLocal(); };
 
-            DOM.nodeImgInp.onchange = (e) => { processImageFile(e.target.files[0], (dataUrl) => { tempNodeImage = dataUrl; DOM.nodeImgPrev.src = dataUrl; DOM.nodeImgPrevBox.classList.remove('hidden'); }); };
+            const onNodePhoto = (e) => {
+                processImageFile(e.target.files[0], (dataUrl) => {
+                    tempNodeImage = dataUrl; DOM.nodeImgPrev.src = dataUrl;
+                    DOM.nodeImgPrevBox.classList.remove('hidden');
+                });
+                e.target.value = '';
+            };
+            DOM.nodeImgInp.onchange = onNodePhoto;
+            if (DOM.nodeImgCam) DOM.nodeImgCam.onchange = onNodePhoto;
             DOM.removeNodeImg.onclick = () => { tempNodeImage = null; DOM.nodeImgPrevBox.classList.add('hidden'); DOM.nodeImgInp.value = ''; };
 
-            DOM.modalPhotoInp.onchange = (e) => { Array.from(e.target.files).forEach(f => { processImageFile(f, (d) => { tempStepImages.push(d); updateModalMediaUI(); }); }); DOM.modalPhotoInp.value = ''; };
+            const onStepPhoto = (e) => {
+                Array.from(e.target.files).forEach(f => {
+                    processImageFile(f, (d) => { tempStepImages.push(d); updateModalMediaUI(); });
+                });
+                e.target.value = '';
+            };
+            DOM.modalPhotoInp.onchange = onStepPhoto;
+            if (DOM.modalPhotoCam) DOM.modalPhotoCam.onchange = onStepPhoto;
         }
 
         function updateModalMediaUI() {
