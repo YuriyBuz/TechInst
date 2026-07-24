@@ -721,45 +721,63 @@
         };
 
         // ================= ШІ (Gemini) =================
-        // Раніше модель була зашита жорстко ('gemini-1.5-flash') — щойно Google
-        // прибирає її з доступу, будь-який запит падає, а користувач бачив
-        // безлике "Помилка зв'язку з ШІ". Тепер модель підбирається сама,
-        // а текст помилки показується справжній.
+        // Google регулярно закриває старі моделі. ListModels при цьому й далі
+        // показує їх у списку, а generateContent віддає «no longer available»,
+        // тому просто «взяти першу зі списку» — ненадійно. Тут додаток
+        // послідовно пробує кандидатів і запам'ятовує ту, що реально працює.
         const AI_MODEL_PREFS = [
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-            'gemini-flash-latest',
-            'gemini-1.5-flash'
+            'gemini-3.6-flash',
+            'gemini-3.5-flash-lite',
+            'gemini-3.5-flash',
+            'gemini-3.1-flash-lite',
+            'gemini-flash-latest'
         ];
+
+        // Моделі не для тексту (картинки, звук, відео) або нестабільні
+        const AI_MODEL_SKIP = /(image|vision|tts|audio|live|embedding|veo|imagen|nano|cyber)/i;
 
         function apiErrorText(data, fallback) {
             if (data && data.error && data.error.message) return data.error.message;
             return fallback || "Невідома помилка API";
         }
 
-        // Питаємо в Google, які моделі реально доступні цьому ключу.
-        async function resolveAiModel(key, force) {
-            if (!force && state.settings.aiModel) return state.settings.aiModel;
+        // Помилка саме моделі (закрита/перейменована), а не ключа чи грошей
+        function isDeadModelError(e) {
+            const m = String((e && e.message) || '').toLowerCase();
+            if (m.indexOf('no longer available') > -1) return true;
+            if (m.indexOf('not found') > -1) return true;
+            if (m.indexOf('deprecated') > -1) return true;
+            if (m.indexOf('is not supported') > -1) return true;
+            return e && (e.httpStatus === 404 || e.httpStatus === 400);
+        }
 
+        function modelVersion(name) {
+            const m = String(name).match(/(\d+(?:\.\d+)?)/);
+            return m ? parseFloat(m[1]) : 0;
+        }
+
+        // Список моделей, доступних цьому ключу
+        async function listAiModels(key) {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(apiErrorText(data, "Недійсний API ключ або немає доступу (HTTP " + res.status + ")"));
 
-            const available = (data.models || [])
+            return (data.models || [])
                 .filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') > -1)
                 .map(m => String(m.name || '').replace('models/', ''))
-                .filter(n => n.indexOf('gemini') === 0);
+                .filter(n => n.indexOf('gemini') === 0 && !AI_MODEL_SKIP.test(n));
+        }
 
-            if (!available.length) throw new Error("Ключ дійсний, але жодна модель Gemini не доступна для генерації.");
-
-            let chosen = AI_MODEL_PREFS.find(p => available.indexOf(p) > -1);
-            if (!chosen) chosen = available.find(n => n.indexOf('flash') > -1 && n.indexOf('lite') === -1);
-            if (!chosen) chosen = available.find(n => n.indexOf('flash') > -1);
-            if (!chosen) chosen = available[0];
-
-            state.settings.aiModel = chosen;
-            saveLocal();
-            return chosen;
+        // Черга спроб: спершу перевірені, далі найновіші flash, наприкінці pro
+        function buildModelQueue(available) {
+            const prefs = AI_MODEL_PREFS.filter(p => available.indexOf(p) > -1);
+            const flash = available
+                .filter(n => prefs.indexOf(n) === -1 && n.indexOf('flash') > -1)
+                .sort((a, b) => modelVersion(b) - modelVersion(a));
+            const pro = available
+                .filter(n => prefs.indexOf(n) === -1 && n.indexOf('flash') === -1)
+                .sort((a, b) => modelVersion(b) - modelVersion(a));
+            return prefs.concat(flash, pro).slice(0, 8);
         }
 
         async function askGemini(key, model, promptText) {
@@ -790,6 +808,56 @@
             return text.trim();
         }
 
+        // Головна функція: пробує моделі по черзі, доки якась не відповість.
+        // Помилки ключа чи білінгу піднімає одразу — їх перебором не вилікуєш.
+        async function askGeminiSmart(key, promptText) {
+            const tried = [];
+            const queue = [];
+            if (state.settings.aiModel) queue.push(state.settings.aiModel);
+
+            let listed = false;
+            let lastErr = null;
+
+            for (let i = 0; i < 10; i++) {
+                if (!queue.length) {
+                    if (listed) break;
+                    listed = true;
+                    const available = await listAiModels(key);
+                    if (!available.length) throw new Error("Ключ дійсний, але жодна текстова модель Gemini не доступна.");
+                    buildModelQueue(available)
+                        .filter(n => tried.indexOf(n) === -1)
+                        .forEach(n => queue.push(n));
+                    if (!queue.length) break;
+                }
+
+                const model = queue.shift();
+                if (tried.indexOf(model) > -1) continue;
+                tried.push(model);
+
+                try {
+                    const text = await askGemini(key, model, promptText);
+                    if (state.settings.aiModel !== model) {
+                        state.settings.aiModel = model;
+                        saveLocal();
+                    }
+                    return { text: text, model: model };
+                } catch (e) {
+                    lastErr = e;
+                    // Не модель винна (немає кредитів, ліміт, поганий ключ) — далі не пробуємо
+                    if (!isDeadModelError(e)) throw e;
+                    if (state.settings.aiModel === model) { state.settings.aiModel = ''; saveLocal(); }
+                }
+            }
+
+            throw lastErr || new Error("Жодна модель Gemini не відповіла. Перевірте ключ і білінг проєкту.");
+        }
+
+        // Перевірка ключа кнопкою: не просто «є у списку», а справжній запит
+        async function resolveAiModel(key) {
+            const r = await askGeminiSmart(key, "Відповідай одним словом: OK");
+            return r.model;
+        }
+
         window.runGlobalAi = async (inputEl, btnEl) => {
             const txt = inputEl.value.trim();
             if (!txt) return showToast("Спочатку напишіть текст", true);
@@ -805,24 +873,10 @@
                            "Поверни ЛИШЕ виправлений текст, без пояснень.\n\nТекст: " + txt;
 
             try {
-                let model = await resolveAiModel(activeKey, false);
-                let result;
-                try {
-                    result = await askGemini(activeKey, model, prompt);
-                } catch (e) {
-                    // Модель могли прибрати вже після того, як ми її запам'ятали —
-                    // питаємо список наново і пробуємо ще раз.
-                    if (e.httpStatus === 404 || e.httpStatus === 400) {
-                        model = await resolveAiModel(activeKey, true);
-                        result = await askGemini(activeKey, model, prompt);
-                    } else {
-                        throw e;
-                    }
-                }
-
-                inputEl.value = result;
+                const r = await askGeminiSmart(activeKey, prompt);
+                inputEl.value = r.text;
                 inputEl.dispatchEvent(new Event('input'));
-                showToast("✨ Текст покращено (" + model + ")");
+                showToast("✨ Текст покращено (" + r.model + ")");
             } catch (e) {
                 console.error("AI ERROR:", e);
                 showToast("❌ ШІ: " + e.message, true, 8000);
@@ -1058,8 +1112,9 @@
                 statusEl.className = 'mt-2 text-xs font-bold text-slate-500'; statusEl.innerHTML = '⏳ З\'єднуюсь...'; statusEl.classList.remove('hidden');
                 try {
                     state.settings.apiKey = key;
-                    // force=true — перезапитуємо список моделей, а не беремо з пам'яті
-                    const model = await resolveAiModel(key, true);
+                    // Перевіряємо не «є у списку», а справжній запит до моделі
+                    state.settings.aiModel = '';
+                    const model = await resolveAiModel(key);
                     statusEl.className = 'mt-2 text-xs font-bold text-green-600';
                     statusEl.innerHTML = '✅ Ключ дійсний. Модель: ' + model;
                     saveLocal();
