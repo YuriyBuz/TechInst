@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Налаштування Обладнання | Food Line</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://scaleflex.cloudimg.io/v7/plugins/filerobot-image-editor/latest/filerobot-image-editor.min.js"></script>
+    
+    <style>
+        :root { 
+            color-scheme: light; 
+            --bg-color: #f8fafc; 
+            --card-bg-color: #ffffff; 
+            --text-color: #1e293b; 
+            --border-color: #e2e8f0; 
+        }
+        body { background-color: var(--bg-color); color: var(--text-color); -webkit-tap-highlight-color: transparent; padding-bottom: 6rem; }
+        .card { background-color: var(--card-bg-color); border: 1px solid var(--border-color); }
+        .input-field { width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 0.75rem; font-size: 1rem; outline: none; transition: all 0.2s; }
+        .input-field:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1); }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        
+        /* СУВОРА ІЗОЛЯЦІЯ ДЛЯ ДРУКУ ТА PDF */
+        @media print {
+            body > #app-container { display: none !important; }
+            body > #pdf-template { display: block !important; }
+            body { background: white !important; padding: 0 !important; margin: 0 !important; }
+            @page { margin: 10mm; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+        body.pdf-export-mode > #app-container { display: none !important; }
+        body.pdf-export-mode > #pdf-template { display: block !important; }
+        body.pdf-export-mode { background: white !important; }
+
+        /* ВАЖЛИВО: тут НЕ можна ставити display:block !important —
+           воно перебивало inline display:flex і ламало верстку
+           "фото зліва / текст справа" у готовому PDF. */
+        .avoid-page-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            break-inside: avoid-page !important;
+        }
+        .page-break { page-break-before: always; }
+        .page-break.is-off { page-break-before: auto; display: none; }
+
+        /* Оверлей під час генерації PDF */
+        #gen-overlay { display: none; }
+        #gen-overlay.show { display: flex; }
+        @media print { #gen-overlay { display: none !important; } }
+        .spin { animation: spinAnim 0.9s linear infinite; }
+        @keyframes spinAnim { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="font-sans antialiased">
+
+    <!-- Обгортка для всього інтерфейсу, щоб ховати його безпечно під час генерації PDF -->
+    <div id="app-container">
+        <div class="container mx-auto max-w-2xl p-3 sm:p-6 relative">
+            <header class="flex justify-between items-center mb-4 pb-4 border-b border-gray-200">
+                <div class="w-1/3"><div id="current-date" class="text-xs font-bold text-slate-500 leading-tight"></div></div>
+                <div class="w-1/3 flex justify-center">
+                    <img id="app-logo" src="Logo_FLP.jpg" alt="Food Line" class="h-10 w-auto rounded-lg bg-white p-1 shadow-sm" onerror="this.onerror=null;this.src=DEFAULT_LOGO;">
+                </div>
+                <div class="w-1/3 flex justify-end">
+                    <div class="text-xs font-semibold px-3 py-1.5 rounded-full border bg-white flex items-center gap-2 shadow-sm">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500" id="statusDot"></span>
+                        <span id="statusText" class="text-slate-600 hidden sm:inline">Онлайн</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="flex gap-1 sm:gap-2 mb-6 bg-slate-200 p-1 rounded-xl tabs-container">
+                <button id="tab-editor" class="flex-1 py-2 rounded-lg bg-white text-emerald-700 font-bold shadow-sm transition-all text-xs sm:text-sm">📝 Редактор</button>
+                <button id="tab-archive" class="flex-1 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-300 transition-all text-xs sm:text-sm">📂 Архів</button>
+                <button id="tab-settings" class="flex-1 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-300 transition-all text-xs sm:text-sm">⚙️ Налашт.</button>
+            </div>
+
+            <!-- ================= EDITOR TAB ================= -->
+            <div id="view-editor" class="fade-in space-y-6">
+                <div class="card p-4 sm:p-6 rounded-2xl shadow-sm border-t-4 border-t-emerald-500">
+                    <div class="relative w-full mb-3">
+                        <input type="text" id="doc-title" placeholder="Назва інструкції..." class="w-full text-xl sm:text-2xl font-bold text-slate-800 placeholder-slate-300 bg-transparent border-b border-transparent focus:border-emerald-500 transition-colors py-1 outline-none pr-16">
+                        <div class="absolute right-0 top-1/2 -translate-y-1/2 flex gap-1 bg-white/90 rounded-md p-0.5">
+                            <button id="title-stt-btn" onclick="toggleGlobalStt(document.getElementById('doc-title'), this)" class="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded transition-colors" title="Голос">🎙️</button>
+                            <button onclick="runGlobalAi(document.getElementById('doc-title'), this)" class="p-1.5 text-slate-400 hover:text-purple-500 hover:bg-purple-50 rounded transition-colors" title="ШІ">✨</button>
+                        </div>
+                    </div>
+
+                    <div class="relative w-full mb-4 flex items-center gap-2 text-slate-600 border-b border-slate-100 pb-3">
+                        <span class="font-bold text-sm uppercase text-slate-500 shrink-0">Обладнання:</span>
+                        <input type="text" id="doc-eq" placeholder="Вкажіть лінію..." class="flex-1 text-base outline-none placeholder-slate-300 bg-transparent pr-16">
+                        <div class="absolute right-0 top-1/2 -translate-y-1/2 flex gap-1 bg-white/90 rounded-md p-0.5">
+                            <button id="eq-stt-btn" onclick="toggleGlobalStt(document.getElementById('doc-eq'), this)" class="p-1 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded transition-colors" title="Голос">🎙️</button>
+                            <button onclick="runGlobalAi(document.getElementById('doc-eq'), this)" class="p-1 text-slate-400 hover:text-purple-500 hover:bg-purple-50 rounded transition-colors" title="ШІ">✨</button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-2">Загальне фото обладнання (1/3 аркуша А4):</label>
+                        <div id="main-image-preview-container" class="hidden mb-3 relative inline-block group">
+                            <img id="main-image-preview" src="" class="h-40 rounded-lg shadow-sm border border-slate-200 object-cover">
+                            <button onclick="openImageEditorFor('main')" class="absolute top-2 left-2 bg-blue-500 text-white rounded-lg px-2 py-1 text-xs shadow-md hover:bg-blue-600 hidden group-hover:flex items-center gap-1 transition-all z-10">🖌️ Змінити</button>
+                            <button id="remove-main-img" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600 font-bold text-xs z-10">✕</button>
+                        </div>
+                        <label id="main-photo-label" class="flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 cursor-pointer text-slate-600 font-medium transition-colors">
+                            📷 Додати загальне фото
+                            <input type="file" id="main-photo-input" accept="image/*" capture="environment" class="hidden">
+                        </label>
+                    </div>
+                </div>
+
+                <div id="nodes-container" class="space-y-6"></div>
+
+                <div id="action-card-node" class="card p-4 sm:p-5 rounded-2xl shadow-md border border-indigo-100 bg-indigo-50/30 relative mt-8">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-indigo-800 flex items-center gap-2">🛠️ Додати новий вузол/частину</h3>
+                    </div>
+                    
+                    <div class="relative w-full mb-2">
+                        <input type="text" id="node-title" placeholder="Назва вузла (напр. 'Барабан орієнтатора')..." class="input-field pr-16 font-bold text-slate-700 bg-white border-white shadow-sm">
+                        <div class="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1 bg-white/90 rounded-md p-0.5">
+                            <button id="node-title-stt-btn" onclick="toggleGlobalStt(document.getElementById('node-title'), this)" class="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded" title="Голос">🎙️</button>
+                            <button onclick="runGlobalAi(document.getElementById('node-title'), this)" class="p-1.5 text-slate-400 hover:text-purple-500 hover:bg-purple-50 rounded" title="ШІ">✨</button>
+                        </div>
+                    </div>
+
+                    <div class="relative w-full mb-2">
+                        <textarea id="node-desc" rows="2" class="input-field resize-none pr-16 text-sm bg-white border-white shadow-sm" placeholder="Загальний опис вузла (опціонально)..."></textarea>
+                        <div class="absolute right-1 bottom-1 flex gap-1 bg-white/90 rounded-md p-0.5">
+                            <button id="node-desc-stt-btn" onclick="toggleGlobalStt(document.getElementById('node-desc'), this)" class="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded" title="Голос">🎙️</button>
+                            <button onclick="runGlobalAi(document.getElementById('node-desc'), this)" class="p-1.5 text-slate-400 hover:text-purple-500 hover:bg-purple-50 rounded" title="ШІ">✨</button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 items-center justify-between mt-3">
+                        <label id="node-photo-label" class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 cursor-pointer font-bold text-sm shadow-sm transition-colors">
+                            📷 Фото вузла
+                            <input type="file" id="node-photo-input" accept="image/*" capture="environment" class="hidden">
+                        </label>
+                        <button id="add-node-btn" class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-all text-sm">Зберегти вузол</button>
+                    </div>
+                    <div id="node-img-preview-box" class="hidden mt-3 relative inline-block group">
+                        <img id="node-img-preview" src="" class="h-24 rounded-lg object-cover border border-slate-200 shadow-sm">
+                        <button onclick="openImageEditorFor('node')" class="absolute top-1 left-1 bg-blue-500 text-white rounded p-1 text-xs shadow hover:bg-blue-600 hidden group-hover:block transition-all z-10" title="Редагувати фото">🖌️</button>
+                        <button id="remove-node-img" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 text-xs z-10">✕</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= ARCHIVE TAB ================= -->
+            <div id="view-archive" class="hidden fade-in space-y-4">
+                <div class="card p-4 rounded-2xl shadow-sm flex justify-between items-center">
+                    <h2 class="text-xl font-bold text-slate-800">📂 Архів</h2>
+                    <button id="btn-new-doc" class="text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100">➕ Створити</button>
+                </div>
+                <div id="archive-list" class="space-y-3"></div>
+            </div>
+
+            <!-- ================= SETTINGS TAB ================= -->
+            <div id="view-settings" class="hidden fade-in space-y-6">
+                <div class="card p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-xl font-bold text-slate-800 mb-4">⚙️ Налаштування</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Email для відправки звіту</label>
+                            <input type="email" id="set-email" class="input-field" placeholder="example@gmail.com">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Папка для PDF (кнопка «Зберегти»)</label>
+                            <input type="text" id="set-drive" class="input-field" placeholder="1A2b3C4d5E6f...">
+                            <p class="text-[10px] text-slate-500 mt-1">Можна вставити повне посилання, система знайде ID.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Папка для фото (посилання в таблиці)</label>
+                            <input type="text" id="set-photo-drive" class="input-field" placeholder="1A2b3C4d5E6f...">
+                            <p class="text-[10px] text-slate-500 mt-1">Фото зберігаються у підпапку з назвою інструкції, а в таблицю потрапляє посилання на кожне.</p>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                            <label class="flex items-start gap-3 cursor-pointer">
+                                <input type="checkbox" id="set-single-page" class="mt-0.5 w-5 h-5 accent-emerald-600 flex-shrink-0">
+                                <span>
+                                    <span class="block text-xs font-bold text-slate-700">PDF одним суцільним аркушем</span>
+                                    <span class="block text-[10px] text-slate-500 mt-0.5">Без розривів сторінок — зручно гортати на телефоні. Зніміть галочку, якщо документ треба друкувати на А4.</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div class="pt-4 border-t border-slate-100">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Логотип компанії (для PDF та шапки)</label>
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <div id="set-logo-preview-box" class="hidden relative">
+                                    <img id="set-logo-preview" src="" class="h-12 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+                                    <button id="remove-logo-btn" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow hover:bg-red-600">✕</button>
+                                </div>
+                                <label class="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer text-sm font-bold shadow-sm transition-colors text-slate-700">
+                                    🖼️ Завантажити логотип
+                                    <input type="file" id="set-logo-input" accept="image/*" class="hidden">
+                                </label>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mt-1">Завантажте лого один раз — воно збережеться на пристрої і гарантовано потрапить у PDF. Без нього в PDF буде текстовий напис "FOOD LINE".</p>
+                        </div>
+
+                        <div class="pt-4 border-t border-slate-100">
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Зв'язок із сервером (Google Apps Script)</label>
+                            <button id="test-conn-btn" class="w-full bg-slate-700 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-colors">📡 Перевірити з'єднання зі скриптом</button>
+                            <div id="conn-status-msg" class="mt-2 text-xs font-bold hidden whitespace-pre-wrap"></div>
+                        </div>
+                        
+                        <div class="pt-4 border-t border-slate-100">
+                            <label class="block text-xs font-bold text-purple-700 mb-1">ШІ Ключ (Gemini API)</label>
+                            <div class="flex gap-2">
+                                <input type="password" id="set-api-key" class="input-field" placeholder="AIzaSy...">
+                                <button id="check-key-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-colors shrink-0">Перевірити</button>
+                                <button id="save-settings-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-colors">Зберегти</button>
+                            </div>
+                            <div id="key-status-msg" class="mt-2 text-xs font-bold flex items-center gap-1.5 hidden"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer id="footer-bar" class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-2 shadow z-40 transition-transform">
+            <div class="container mx-auto max-w-2xl flex gap-2">
+                <button id="save-sheets-btn" class="flex-1 flex flex-col items-center justify-center bg-emerald-600 text-white py-2 rounded-xl font-bold shadow hover:bg-emerald-700 text-xs sm:text-sm transition-colors"><span class="text-lg">☁️</span> Зберегти</button>
+                <button id="email-btn" class="flex-1 flex flex-col items-center justify-center bg-blue-600 text-white py-2 rounded-xl font-bold shadow hover:bg-blue-700 text-xs sm:text-sm transition-colors"><span class="text-lg">📧</span> На пошту</button>
+                <button id="pdf-btn" class="flex-1 flex flex-col items-center justify-center bg-slate-800 text-white py-2 rounded-xl font-bold shadow hover:bg-slate-900 text-xs sm:text-sm transition-colors"><span class="text-lg">📄</span> PDF файл</button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Модальне вікно для додавання КРОКУ -->
+    <div id="step-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden z-[60] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-slate-800">Додати дію (налаштування)</h3>
+                <button id="close-step-modal" class="text-slate-400 hover:text-red-500 font-bold text-xl transition-colors">✕</button>
+            </div>
+            <div class="p-4 overflow-y-auto space-y-4">
+                
+                <div class="relative w-full">
+                    <textarea id="modal-step-text" rows="5" class="input-field resize-none bg-white shadow-sm pr-16" placeholder="Опишіть дію (або надиктуйте голосом)..."></textarea>
+                    <div class="absolute right-1 bottom-1 flex gap-1 bg-white/90 rounded-md p-0.5">
+                        <button id="modal-stt-btn" onclick="toggleGlobalStt(document.getElementById('modal-step-text'), this)" class="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded font-bold transition-colors shadow-sm bg-white" title="Голос">🎙️</button>
+                        <button id="modal-ai-btn" onclick="runGlobalAi(document.getElementById('modal-step-text'), this)" class="p-2 text-purple-500 hover:bg-purple-100 rounded font-bold transition-colors shadow-sm bg-purple-50" title="ШІ">✨</button>
+                    </div>
+                </div>
+                
+                <div id="modal-media-preview" class="hidden flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200"></div>
+                
+                <div id="modal-video-preview" class="hidden flex items-center justify-between gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-200">
+                    <span>🎥 Відео додано</span>
+                    <button id="remove-modal-video" class="text-indigo-400 hover:text-red-500 text-lg">✕</button>
+                </div>
+
+                <div class="flex flex-wrap gap-2 items-center">
+                    <label id="modal-photo-label" class="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer text-sm font-bold shadow-sm transition-colors text-slate-700">
+                        📷 Додати фото
+                        <input type="file" id="modal-photo-input" accept="image/*" capture="environment" multiple class="hidden">
+                    </label>
+
+                    <label id="modal-video-label" class="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer text-sm font-bold shadow-sm transition-colors text-slate-700">
+                        🎥 Додати відео
+                        <input type="file" id="modal-video-input" accept="video/*" capture="environment" class="hidden">
+                    </label>
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+                <button id="modal-clear-btn" class="px-4 py-2 text-slate-500 font-bold hover:bg-slate-200 rounded-lg transition-colors">Очистити</button>
+                <button id="modal-save-btn" class="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg shadow-md hover:bg-emerald-700 transition-colors">Зберегти крок</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="img-editor-modal" class="fixed inset-0 bg-slate-900 z-[100] hidden flex flex-col">
+        <div class="flex justify-between items-center bg-slate-800 text-white p-3 shadow-md">
+            <h3 class="font-bold text-sm">🖌️ Редактор зображення</h3>
+            <button onclick="closeImageEditor()" class="text-slate-300 hover:text-red-500 text-2xl font-bold px-2">✕</button>
+        </div>
+        <div id="image-editor-container" class="flex-1 w-full bg-slate-900"></div>
+    </div>
+
+    <!-- ПРИХОВАНИЙ ШАБЛОН ДЛЯ PDF (Оновлений дизайн з лого та великими фото зліва) -->
+    <!-- Зверніть увагу: клас hidden залишається, ми його знімаємо динамічно перед генерацією -->
+    <div id="pdf-template" class="hidden w-full max-w-4xl mx-auto p-8 bg-white text-slate-800 font-sans">
+        
+        <div class="flex justify-between items-center mb-4 border-b-2 border-slate-800 pb-4">
+            <img id="pdf-logo" src="" alt="Food Line" style="height: 32px; width: auto; object-fit: contain;">
+            <span class="text-xs font-bold text-slate-400">ТЕХНІЧНА ІНСТРУКЦІЯ</span>
+        </div>
+        
+        <h1 id="pdf-doc-title" class="text-3xl font-bold text-slate-900 mb-2"></h1>
+        <h3 id="pdf-doc-eq" class="text-xl text-slate-600 font-medium mb-6"></h3>
+        
+        <div class="my-auto text-center avoid-page-break" id="pdf-main-image-container">
+            <img id="pdf-main-image" src="" style="max-width: 100%; width: auto; height: auto; max-height: 400px; margin-bottom: 20px; border: 1px solid #cbd5e1; padding: 4px; border-radius: 12px; display: inline-block;">
+        </div>
+        
+        <div id="pdf-page-break" class="page-break"></div>
+
+        <div id="pdf-nodes-container" class="space-y-6"></div>
+        
+        <div class="text-right text-xs text-slate-400 border-t border-slate-200 pt-4 mt-8">
+            <span id="pdf-date-footer"></span> • Food Line Production © Автоматичний звіт
+        </div>
+    </div>
+
+    <div id="gen-overlay" class="fixed inset-0 bg-white/95 z-[150] flex-col items-center justify-center gap-4 text-center p-6">
+        <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full spin"></div>
+        <div id="gen-overlay-text" class="font-bold text-slate-700 text-lg">Генерується PDF...</div>
+        <div class="text-xs text-slate-400">Це може тривати до хвилини на великих інструкціях.<br>Не закривайте сторінку.</div>
+    </div>
+
+    <div id="toast" class="fixed top-5 right-5 left-5 sm:left-auto bg-slate-800 text-white py-3 px-6 rounded-xl shadow-2xl transform -translate-y-20 opacity-0 transition-all z-[110] font-bold text-center pointer-events-none"></div>
+
+    <script>
+        // ============================================================
+        //  НАЛАШТУВАННЯ ЗВ'ЯЗКУ
+        //  Після КОЖНОЇ зміни Code.gs: Розгорнути -> Керувати
+        //  розгортаннями -> Редагувати -> Версія: НОВА -> Розгорнути.
+        //  Доступ має бути: "Будь-хто" (Anyone), Виконувати як: "Я".
+        // ============================================================
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGQFNPwIgd4Mnt62UOyIrC4DA9x62vx9cxmP86qnpNDYqgSkfufoA79z7oODdA58vAsA/exec';
+        const FETCH_TIMEOUT_MS = 180000; // 3 хвилини на великі PDF
+        // Логотип лежить поруч з index.html у тому ж репозиторії GitHub.
+        // Свій домен = немає CORS, тому canvas завжди зможе перевести його в base64 для PDF.
+        const LOCAL_LOGO_URL = 'Logo_FLP.jpg';
+
+        // Вбудований запасний логотип (SVG -> base64, ніякого CORS, працює завжди)
+        const DEFAULT_LOGO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="220" height="48" viewBox="0 0 220 48">' +
+            '<rect width="220" height="48" rx="10" fill="#059669"/>' +
+            '<text x="110" y="31" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#ffffff" text-anchor="middle">FOOD LINE</text>' +
+            '</svg>'
+        );
+
+        // Лого з файлу репозиторію, переведене в base64
+        let runtimeLogo = null;
+
+        // Актуальний логотип: свій завантажений -> локальний файл -> вбудований напис
+        function getActiveLogo() {
+            return state.settings.logo || runtimeLogo || DEFAULT_LOGO;
+        }
+
+        // Перетворюємо локальний Logo_FLP.jpg на base64 — щоб він гарантовано
+        // потрапляв у PDF навіть без інтернету після першого завантаження.
+        function tryLoadRemoteLogo() {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                const finish = (val) => { clearTimeout(timer); resolve(val); };
+                const timer = setTimeout(() => finish(null), 6000);
+                img.onload = () => {
+                    try {
+                        const c = document.createElement('canvas');
+                        c.width = img.naturalWidth; c.height = img.naturalHeight;
+                        c.getContext('2d').drawImage(img, 0, 0);
+                        finish(c.toDataURL('image/png'));
+                    } catch (e) { finish(null); }
+                };
+                img.onerror = () => finish(null);
+                // cache-bust: щоб браузер не підсунув закешовану версію без CORS-заголовків
+                img.src = LOCAL_LOGO_URL;
+            });
+        }
+
+        let state = {
+            docId: crypto.randomUUID(), title: '', equipment: '', mainImage: null,
+            nodes: [], archive: [],
+            settings: { email: 'Buznitskiy7@gmail.com', driveId: '', photoDriveId: '1HVA32yxdk2jUMZwDmFeGGbbduelgy266', apiKey: '', aiModel: '', singlePage: true, logo: null }
+        };
+
+        let tempNodeImage = null; let activeNodeIdForStep = null;
+        let tempStepImages = []; let tempStepVideoUrl = null; let editingStepId = null;
+        let editingNodeId = null;
+        let DOM = {};
+
+        function initDOM() {
+            DOM = {
+                date: document.getElementById('current-date'), toast: document.getElementById('toast'),
+                tabEd: document.getElementById('tab-editor'), tabAr: document.getElementById('tab-archive'), tabSet: document.getElementById('tab-settings'),
+                viewEd: document.getElementById('view-editor'), viewAr: document.getElementById('view-archive'), viewSet: document.getElementById('view-settings'),
+                title: document.getElementById('doc-title'), eq: document.getElementById('doc-eq'),
+                mainImgInp: document.getElementById('main-photo-input'), mainImgPrev: document.getElementById('main-image-preview'), mainImgBox: document.getElementById('main-image-preview-container'), removeMainImg: document.getElementById('remove-main-img'),
+                nodesCont: document.getElementById('nodes-container'), nodeTitle: document.getElementById('node-title'), nodeDesc: document.getElementById('node-desc'), nodeImgInp: document.getElementById('node-photo-input'), nodeImgPrevBox: document.getElementById('node-img-preview-box'), nodeImgPrev: document.getElementById('node-img-preview'), removeNodeImg: document.getElementById('remove-node-img'), addNodeBtn: document.getElementById('add-node-btn'),
+                stepModal: document.getElementById('step-modal'), closeStepModal: document.getElementById('close-step-modal'), modalText: document.getElementById('modal-step-text'), modalPhotoInp: document.getElementById('modal-photo-input'), modalMediaPrev: document.getElementById('modal-media-preview'), modalVideoInp: document.getElementById('modal-video-input'), modalVideoPrev: document.getElementById('modal-video-preview'), removeModalVideo: document.getElementById('remove-modal-video'), modalSaveBtn: document.getElementById('modal-save-btn'), modalClearBtn: document.getElementById('modal-clear-btn'),
+                setEmail: document.getElementById('set-email'), setDrive: document.getElementById('set-drive'), setPhotoDrive: document.getElementById('set-photo-drive'), setSinglePage: document.getElementById('set-single-page'), setApi: document.getElementById('set-api-key'), saveSetBtn: document.getElementById('save-settings-btn'), checkKeyBtn: document.getElementById('check-key-btn'), keyStatusMsg: document.getElementById('key-status-msg'),
+                testConnBtn: document.getElementById('test-conn-btn'), connStatusMsg: document.getElementById('conn-status-msg'),
+                setLogoInp: document.getElementById('set-logo-input'), setLogoPrev: document.getElementById('set-logo-preview'), setLogoPrevBox: document.getElementById('set-logo-preview-box'), removeLogoBtn: document.getElementById('remove-logo-btn'),
+                genOverlay: document.getElementById('gen-overlay'), genOverlayText: document.getElementById('gen-overlay-text'),
+                appLogo: document.getElementById('app-logo'),
+                saveBtn: document.getElementById('save-sheets-btn'), emailBtn: document.getElementById('email-btn'), pdfBtn: document.getElementById('pdf-btn'),
+                archiveList: document.getElementById('archive-list'), btnNewDoc: document.getElementById('btn-new-doc'),
+                imgEditorModal: document.getElementById('img-editor-modal')
+            };
+        }
+
+        function initApp() {
+            try {
+                initDOM();
+                DOM.date.textContent = new Date().toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' });
+                loadData();
+                setupTabs();
+                setupMediaInputs();
+                setupSettings();
+                setupButtons();
+                setupModalButtons();
+                setupNodeButton();
+
+                DOM.title.addEventListener('input', saveLocal);
+                DOM.eq.addEventListener('input', saveLocal);
+
+                renderNodes();
+
+                // Без await — додаток відкривається миттєво,
+                // а налаштування з таблиці підтягуються за секунду
+                syncSettingsFromServer();
+
+                // Логотип: якщо є свій — ставимо в шапку одразу;
+                // паралельно тихо пробуємо стягнути лого з сайту для PDF
+                if (state.settings.logo) {
+                    DOM.appLogo.src = state.settings.logo;
+                }
+                tryLoadRemoteLogo().then(dataUrl => {
+                    if (dataUrl) {
+                        runtimeLogo = dataUrl;
+                        if (!state.settings.logo) DOM.appLogo.src = dataUrl;
+                    }
+                });
+            } catch (err) {
+                // Якщо ініціалізація впала — кнопки "мовчатимуть". Показуємо причину явно.
+                console.error("INIT ERROR:", err);
+                alert("Помилка запуску додатку: " + err.message + "\nПерезавантажте сторінку. Якщо повторюється — надішліть цей текст розробнику.");
+            }
+        }
+
+        function showToast(msg, isError = false, durationMs = 3500) {
+            DOM.toast.textContent = msg;
+            DOM.toast.className = `fixed top-5 right-5 left-5 sm:left-auto ${isError ? 'bg-red-500' : 'bg-emerald-600'} text-white py-3 px-6 rounded-xl shadow-2xl transition-all z-[110] font-bold text-center pointer-events-none`;
+            DOM.toast.style.opacity = '1'; DOM.toast.style.transform = 'translateY(0)';
+            clearTimeout(showToast._t);
+            showToast._t = setTimeout(() => { DOM.toast.style.opacity = '0'; DOM.toast.style.transform = 'translateY(-2rem)'; }, durationMs);
+        }
+
+        function setupTabs() {
+            const actCls = "flex-1 py-2 rounded-lg bg-white text-emerald-700 font-bold shadow-sm transition-all text-xs sm:text-sm";
+            const inactCls = "flex-1 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-300 transition-all text-xs sm:text-sm";
+
+            const hideAll = () => {
+                DOM.viewEd.classList.add('hidden'); DOM.viewAr.classList.add('hidden'); DOM.viewSet.classList.add('hidden');
+                DOM.tabEd.className = inactCls; DOM.tabAr.className = inactCls; DOM.tabSet.className = inactCls;
+                document.getElementById('footer-bar').classList.add('translate-y-[150%]');
+            };
+
+            DOM.tabEd.onclick = () => { hideAll(); DOM.viewEd.classList.remove('hidden'); DOM.tabEd.className = actCls; document.getElementById('footer-bar').classList.remove('translate-y-[150%]'); renderNodes(); };
+            DOM.tabAr.onclick = () => { hideAll(); DOM.viewAr.classList.remove('hidden'); DOM.tabAr.className = actCls; renderArchive(); };
+
+            DOM.tabSet.onclick = () => {
+                const pass = prompt("Введіть пароль доступу до налаштувань:");
+                if (pass === "5588") {
+                    hideAll(); DOM.viewSet.classList.remove('hidden'); DOM.tabSet.className = actCls;
+                    fillSettingsFields();
+                    // Тихо освіжаємо з таблиці — раптом хтось змінив з іншого пристрою
+                    syncSettingsFromServer();
+                    DOM.keyStatusMsg.classList.add('hidden');
+                    DOM.connStatusMsg.classList.add('hidden');
+                    if (state.settings.logo) { DOM.setLogoPrev.src = state.settings.logo; DOM.setLogoPrevBox.classList.remove('hidden'); }
+                    else { DOM.setLogoPrevBox.classList.add('hidden'); }
+                } else {
+                    if (pass !== null) showToast("Невірний пароль!", true);
+                }
+            };
+        }
+
+        function processImageFile(file, callback) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX = 1000;
+                    const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+                    canvas.width = img.width * scale; canvas.height = img.height * scale;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    callback(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function setupMediaInputs() {
+            DOM.mainImgInp.onchange = (e) => { processImageFile(e.target.files[0], (dataUrl) => { state.mainImage = dataUrl; DOM.mainImgPrev.src = dataUrl; DOM.mainImgBox.classList.remove('hidden'); saveLocal(); }); };
+            DOM.removeMainImg.onclick = () => { state.mainImage = null; DOM.mainImgBox.classList.add('hidden'); DOM.mainImgPrev.src = ''; DOM.mainImgInp.value = ''; saveLocal(); };
+
+            DOM.nodeImgInp.onchange = (e) => { processImageFile(e.target.files[0], (dataUrl) => { tempNodeImage = dataUrl; DOM.nodeImgPrev.src = dataUrl; DOM.nodeImgPrevBox.classList.remove('hidden'); }); };
+            DOM.removeNodeImg.onclick = () => { tempNodeImage = null; DOM.nodeImgPrevBox.classList.add('hidden'); DOM.nodeImgInp.value = ''; };
+
+            DOM.modalPhotoInp.onchange = (e) => { Array.from(e.target.files).forEach(f => { processImageFile(f, (d) => { tempStepImages.push(d); updateModalMediaUI(); }); }); DOM.modalPhotoInp.value = ''; };
+            DOM.modalVideoInp.onchange = (e) => { const f = e.target.files[0]; if(f) { tempStepVideoUrl = URL.createObjectURL(f); DOM.modalVideoPrev.classList.remove('hidden'); showToast("Увага: відео зберігається лише на цьому пристрої до перезавантаження", false, 5000); } };
+            DOM.removeModalVideo.onclick = () => { tempStepVideoUrl = null; DOM.modalVideoPrev.classList.add('hidden'); DOM.modalVideoInp.value = ''; };
+        }
+
+        function updateModalMediaUI() {
+            if(tempStepImages.length > 0) {
+                DOM.modalMediaPrev.classList.remove('hidden');
+                DOM.modalMediaPrev.innerHTML = tempStepImages.map((src, i) => `
+                    <div class="relative inline-block mt-2 group">
+                        <img src="${src}" class="h-20 w-20 object-cover rounded-lg shadow-sm border border-slate-200">
+                        <button onclick="openImageEditorFor('step', ${i})" class="absolute top-1 left-1 bg-blue-500 text-white rounded p-1 text-xs shadow hover:bg-blue-600 hidden group-hover:block transition-all z-10" title="Редагувати фото">🖌️</button>
+                        <button onclick="removeTempStepImage(${i})" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shadow hover:bg-red-600 z-10">✕</button>
+                    </div>
+                `).join('');
+            } else { DOM.modalMediaPrev.classList.add('hidden'); DOM.modalMediaPrev.innerHTML = ''; }
+        }
+        window.removeTempStepImage = (idx) => { tempStepImages.splice(idx, 1); updateModalMediaUI(); };
+
+        // ================= РЕДАКТОР ЗОБРАЖЕНЬ =================
+        let filerobotEditor = null;
+        let activeImageTarget = null;
+
+        window.openImageEditorFor = (type, index = null) => {
+            let sourceImg = '';
+            if (type === 'main') sourceImg = state.mainImage;
+            else if (type === 'node') sourceImg = tempNodeImage;
+            else if (type === 'step') sourceImg = tempStepImages[index];
+
+            if (!sourceImg || !window.FilerobotImageEditor) return showToast("Завантаження редактора...", true);
+
+            activeImageTarget = { type, index };
+            DOM.imgEditorModal.classList.remove('hidden');
+            document.getElementById('image-editor-container').innerHTML = '';
+
+            const FilerobotImageEditor = window.FilerobotImageEditor;
+            filerobotEditor = new FilerobotImageEditor(
+                document.getElementById('image-editor-container'),
+                {
+                    source: sourceImg,
+                    onSave: (editedImageObject, designState) => {
+                        const newBase64 = editedImageObject.imageBase64;
+                        if (activeImageTarget.type === 'main') {
+                            state.mainImage = newBase64; DOM.mainImgPrev.src = newBase64; saveLocal();
+                        } else if (activeImageTarget.type === 'node') {
+                            tempNodeImage = newBase64; DOM.nodeImgPrev.src = newBase64;
+                        } else if (activeImageTarget.type === 'step') {
+                            tempStepImages[activeImageTarget.index] = newBase64; updateModalMediaUI();
+                        }
+                        closeImageEditor();
+                    },
+                    onClose: closeImageEditor,
+                    translations: {
+                        profile: 'Профіль', coverPhoto: 'Обкладинка', cancel: 'Скасувати', save: 'Зберегти', saveAs: 'Зберегти',
+                        apply: 'Застосувати', reset: 'Скинути', crop: 'Обрізати', annotate: 'Малювати', arrow: 'Стрілка',
+                        text: 'Текст', ellipse: 'Коло', rectangle: 'Прямокутник', pen: 'Маркер', orientation: 'Орієнтація',
+                        polygon: 'Многокутник', image: 'Зображення', line: 'Лінія'
+                    },
+                    tabsIds: ['Annotate', 'Crop', 'Adjust'],
+                    defaultTabId: 'Annotate',
+                    defaultToolId: 'Arrow',
+                    annotationsCommon: { fill: '#ff0000', stroke: '#ff0000', strokeWidth: 3 },
+                    Text: { text: 'Ваш текст', fontFamily: 'Arial', fonts: ['Arial', 'Times New Roman'] }
+                }
+            );
+            filerobotEditor.render();
+        };
+
+        window.closeImageEditor = () => {
+            DOM.imgEditorModal.classList.add('hidden');
+            if (filerobotEditor) { filerobotEditor.terminate(); filerobotEditor = null; }
+        };
+
+        // ================= ГОЛОСОВИЙ ВВІД =================
+        let isRec = false;
+        let sttTargetInput = null;
+        let sttTargetBtn = null;
+        let sessionBaseText = '';
+        let sr = null;
+
+        // Стан поточної сесії диктування
+        let finalChunks = [];      // вже підтверджені фрагменти
+        let processedUpTo = 0;     // індекс результату, до якого вже опрацьовано
+        let manualStop = false;    // користувач сам натиснув стоп
+
+        // ПРИЧИНА ЗДВОЄННЯ СЛІВ:
+        // Chrome на Android віддає фрази, що ростуть — "Крок", "Крок 2",
+        // "Крок 2 виконайте" — і кожну позначає як фінальну. Старий код
+        // склеював їх усі поспіль, звідси "КрокКрок 2Крок 2Крок 2...".
+        // Тут новий фрагмент, що є продовженням попереднього, ЗАМІНЮЄ його.
+        function mergeVoiceChunk(chunks, text) {
+            const t = String(text || '').trim().replace(/\s+/g, ' ');
+            if (!t) return;
+            const last = chunks[chunks.length - 1];
+            if (last) {
+                const a = last.toLowerCase();
+                const b = t.toLowerCase();
+                if (b === a) return;                                  // точний дубль
+                if (b.startsWith(a)) { chunks[chunks.length - 1] = t; return; } // продовження
+                if (a.startsWith(b)) return;                          // коротший старий варіант
+            }
+            chunks.push(t);
+        }
+
+        function renderVoiceText(interim) {
+            if (!sttTargetInput) return;
+            const spoken = finalChunks.join(' ') + (interim ? ' ' + interim : '');
+            const full = (sessionBaseText ? sessionBaseText + ' ' + spoken : spoken)
+                .trim().replace(/\s+/g, ' ');
+            sttTargetInput.value = full;
+            sttTargetInput.dispatchEvent(new Event('input'));
+        }
+
+        function getSpeechRecognition() {
+            if (sr) return sr;
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) return null;
+
+            try {
+                sr = new SpeechRecognition();
+                sr.lang = 'uk-UA';
+                sr.continuous = true;
+                sr.interimResults = true;
+                sr.maxAlternatives = 1;
+
+                sr.onstart = () => {
+                    isRec = true;
+                    processedUpTo = 0; // масив результатів починається наново
+                    if (sttTargetBtn) { sttTargetBtn.classList.add('bg-red-100', 'text-red-700'); sttTargetBtn.innerHTML = '🔴...'; }
+                };
+
+                sr.onresult = (e) => {
+                    let interim = '';
+                    for (let i = 0; i < e.results.length; i++) {
+                        const r = e.results[i];
+                        const txt = (r[0] && r[0].transcript) || '';
+                        if (r.isFinal) {
+                            // кожен індекс опрацьовуємо рівно один раз
+                            if (i >= processedUpTo) {
+                                mergeVoiceChunk(finalChunks, txt);
+                                processedUpTo = i + 1;
+                            }
+                        } else {
+                            interim = txt; // беремо ОСТАННІЙ проміжний, а не суму всіх
+                        }
+                    }
+                    renderVoiceText(interim);
+                };
+
+                sr.onerror = (e) => {
+                    const fatal = ['not-allowed', 'service-not-allowed', 'audio-capture'];
+                    if (fatal.indexOf(e.error) > -1) {
+                        manualStop = true;
+                        showToast("Мікрофон недоступний. Дозвольте доступ у налаштуваннях браузера.", true, 6000);
+                    } else if (e.error === 'network') {
+                        manualStop = true;
+                        showToast("Розпізнавання мови потребує інтернету", true);
+                    }
+                    // 'no-speech' / 'aborted' — не фатально, сесія просто перезапуститься
+                };
+
+                sr.onend = () => {
+                    // Android обриває сесію після паузи в мовленні.
+                    // Якщо користувач не натискав стоп — тихо продовжуємо запис.
+                    if (isRec && !manualStop) {
+                        try { sr.start(); return; } catch (err) { /* нижче завершимо */ }
+                    }
+                    isRec = false;
+                    renderVoiceText('');   // прибираємо недописаний проміжний текст
+                    resetSttButtonUI();
+                    showToast("🎤 Голосовий запис завершено");
+                };
+            } catch (err) {}
+            return sr;
+        }
+
+        function resetSttButtonUI() {
+            if (sttTargetBtn) {
+                sttTargetBtn.classList.remove('bg-red-100', 'text-red-700');
+                sttTargetBtn.innerHTML = sttTargetBtn.id === 'modal-stt-btn' ? '🎙️ Голос' : '🎙️';
+            }
+        }
+
+        function startVoiceSession(recognizer, inputEl, btnEl) {
+            sttTargetInput = inputEl;
+            sttTargetBtn = btnEl;
+            sessionBaseText = inputEl.value.trim();
+            finalChunks = [];
+            processedUpTo = 0;
+            manualStop = false;
+            try {
+                recognizer.start();
+                showToast("🎤 Запис розпочато. Говоріть...");
+            } catch (e) {
+                showToast("Не вдалося увімкнути мікрофон", true);
+            }
+        }
+
+        window.toggleGlobalStt = (inputEl, btnEl) => {
+            const recognizer = getSpeechRecognition();
+            if (!recognizer) return showToast("Голосовий ввід не підтримується цим браузером", true);
+
+            if (isRec) {
+                manualStop = true;
+                isRec = false;
+                try { recognizer.stop(); } catch (e) {}
+
+                // Перемикання диктування на інше поле
+                if (sttTargetInput !== inputEl) {
+                    setTimeout(() => startVoiceSession(recognizer, inputEl, btnEl), 500);
+                }
+            } else {
+                startVoiceSession(recognizer, inputEl, btnEl);
+            }
+        };
+
+        // ================= ШІ (Gemini) =================
+        // Раніше модель була зашита жорстко ('gemini-1.5-flash') — щойно Google
+        // прибирає її з доступу, будь-який запит падає, а користувач бачив
+        // безлике "Помилка зв'язку з ШІ". Тепер модель підбирається сама,
+        // а текст помилки показується справжній.
+        const AI_MODEL_PREFS = [
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+            'gemini-flash-latest',
+            'gemini-1.5-flash'
+        ];
+
+        function apiErrorText(data, fallback) {
+            if (data && data.error && data.error.message) return data.error.message;
+            return fallback || "Невідома помилка API";
+        }
+
+        // Питаємо в Google, які моделі реально доступні цьому ключу.
+        async function resolveAiModel(key, force) {
+            if (!force && state.settings.aiModel) return state.settings.aiModel;
+
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(apiErrorText(data, "Недійсний API ключ або немає доступу (HTTP " + res.status + ")"));
+
+            const available = (data.models || [])
+                .filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') > -1)
+                .map(m => String(m.name || '').replace('models/', ''))
+                .filter(n => n.indexOf('gemini') === 0);
+
+            if (!available.length) throw new Error("Ключ дійсний, але жодна модель Gemini не доступна для генерації.");
+
+            let chosen = AI_MODEL_PREFS.find(p => available.indexOf(p) > -1);
+            if (!chosen) chosen = available.find(n => n.indexOf('flash') > -1 && n.indexOf('lite') === -1);
+            if (!chosen) chosen = available.find(n => n.indexOf('flash') > -1);
+            if (!chosen) chosen = available[0];
+
+            state.settings.aiModel = chosen;
+            saveLocal();
+            return chosen;
+        }
+
+        async function askGemini(key, model, promptText) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+            const payload = {
+                contents: [{ parts: [{ text: promptText }] }],
+                generationConfig: { temperature: 0.3 }
+            };
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const err = new Error(apiErrorText(data, "HTTP " + res.status));
+                err.httpStatus = res.status;
+                throw err;
+            }
+            const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+            const text = parts && parts[0] && parts[0].text;
+            if (!text) {
+                if (data.promptFeedback && data.promptFeedback.blockReason) {
+                    throw new Error("Запит заблоковано фільтром Google: " + data.promptFeedback.blockReason);
+                }
+                throw new Error("Модель повернула порожню відповідь.");
+            }
+            return text.trim();
+        }
+
+        window.runGlobalAi = async (inputEl, btnEl) => {
+            const txt = inputEl.value.trim();
+            if (!txt) return showToast("Спочатку напишіть текст", true);
+
+            const activeKey = (state.settings.apiKey || "").trim();
+            if (!activeKey) { showToast("Потрібен API Ключ!", true); return DOM.tabSet.click(); }
+
+            const originalHTML = btnEl.innerHTML;
+            btnEl.innerHTML = "⏳"; btnEl.disabled = true;
+
+            const prompt = "Виправ граматичні та пунктуаційні помилки, покращ стиль. " +
+                           "Це технічна інструкція з налаштування обладнання — збережи всі терміни та числа без змін. " +
+                           "Поверни ЛИШЕ виправлений текст, без пояснень.\n\nТекст: " + txt;
+
+            try {
+                let model = await resolveAiModel(activeKey, false);
+                let result;
+                try {
+                    result = await askGemini(activeKey, model, prompt);
+                } catch (e) {
+                    // Модель могли прибрати вже після того, як ми її запам'ятали —
+                    // питаємо список наново і пробуємо ще раз.
+                    if (e.httpStatus === 404 || e.httpStatus === 400) {
+                        model = await resolveAiModel(activeKey, true);
+                        result = await askGemini(activeKey, model, prompt);
+                    } else {
+                        throw e;
+                    }
+                }
+
+                inputEl.value = result;
+                inputEl.dispatchEvent(new Event('input'));
+                showToast("✨ Текст покращено (" + model + ")");
+            } catch (e) {
+                console.error("AI ERROR:", e);
+                showToast("❌ ШІ: " + e.message, true, 8000);
+            } finally {
+                btnEl.innerHTML = originalHTML; btnEl.disabled = false;
+            }
+        };
+
+        // ================= МОДАЛКА КРОКУ =================
+        function setupModalButtons() {
+            if(DOM.closeStepModal) DOM.closeStepModal.onclick = () => DOM.stepModal.classList.add('hidden');
+            if(DOM.modalClearBtn) DOM.modalClearBtn.onclick = () => {
+                DOM.modalText.value = ''; tempStepImages = []; tempStepVideoUrl = null;
+                updateModalMediaUI(); DOM.modalVideoPrev.classList.add('hidden');
+            };
+            if(DOM.modalSaveBtn) DOM.modalSaveBtn.onclick = () => {
+                const txt = DOM.modalText.value.trim();
+                if(!txt && !tempStepImages.length && !tempStepVideoUrl) return showToast("Додайте текст або фото", true);
+                const node = state.nodes.find(n=>n.id===activeNodeIdForStep);
+                if(node) {
+                    if(editingStepId) {
+                        const step = node.steps.find(s=>s.id===editingStepId);
+                        step.text = txt; step.images = [...tempStepImages]; step.videoUrl = tempStepVideoUrl;
+                    } else {
+                        node.steps.push({ id: crypto.randomUUID(), text: txt, images: [...tempStepImages], videoUrl: tempStepVideoUrl });
+                    }
+                    DOM.stepModal.classList.add('hidden'); renderNodes(); saveLocal();
+                }
+            };
+        }
+
+        function setupNodeButton() {
+            if (DOM.addNodeBtn) DOM.addNodeBtn.onclick = () => {
+                const t = DOM.nodeTitle.value.trim();
+                if(!t && !tempNodeImage) return showToast("Введіть назву вузла", true);
+
+                if (editingNodeId) {
+                    const node = state.nodes.find(n => n.id === editingNodeId);
+                    if (node) { node.title = t; node.desc = DOM.nodeDesc.value.trim(); node.image = tempNodeImage; }
+                    editingNodeId = null;
+                    DOM.addNodeBtn.textContent = "Зберегти вузол";
+                    DOM.addNodeBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+                    DOM.addNodeBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                } else {
+                    state.nodes.push({ id: crypto.randomUUID(), title: t, desc: DOM.nodeDesc.value.trim(), image: tempNodeImage, steps: [] });
+                }
+
+                DOM.nodeTitle.value = ''; DOM.nodeDesc.value = ''; tempNodeImage = null; DOM.nodeImgPrevBox.classList.add('hidden');
+                renderNodes(); saveLocal();
+            };
+        }
+
+        window.editNode = (nId) => {
+            const node = state.nodes.find(n => n.id === nId);
+            if (!node) return;
+            editingNodeId = node.id;
+            DOM.nodeTitle.value = node.title || ''; DOM.nodeDesc.value = node.desc || ''; tempNodeImage = node.image || null;
+            if (tempNodeImage) { DOM.nodeImgPrev.src = tempNodeImage; DOM.nodeImgPrevBox.classList.remove('hidden'); } else { DOM.nodeImgPrevBox.classList.add('hidden'); }
+
+            DOM.addNodeBtn.textContent = "🔄 Оновити вузол";
+            DOM.addNodeBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+            DOM.addNodeBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+            document.getElementById('action-card-node').scrollIntoView({ behavior: 'smooth' });
+        };
+
+        window.editStep = (nId, sId) => {
+            activeNodeIdForStep = nId; editingStepId = sId;
+            const step = state.nodes.find(n=>n.id===nId).steps.find(s=>s.id===sId);
+            DOM.modalText.value = step.text || ''; tempStepImages = step.images ? [...step.images] : []; tempStepVideoUrl = step.videoUrl || null;
+            updateModalMediaUI(); DOM.stepModal.classList.remove('hidden');
+        };
+
+        function renderNodes() {
+            DOM.title.value = state.title; DOM.eq.value = state.equipment;
+            if(state.mainImage) { DOM.mainImgPrev.src = state.mainImage; DOM.mainImgBox.classList.remove('hidden'); } else { DOM.mainImgBox.classList.add('hidden'); }
+
+            DOM.nodesCont.innerHTML = state.nodes.map((node) => `
+                <div class="card p-4 sm:p-5 rounded-2xl shadow-sm border-l-4 border-l-indigo-500 relative bg-white">
+                    <div class="absolute top-3 right-3 flex gap-1">
+                        <button onclick="editNode('${node.id}')" class="text-slate-400 hover:text-blue-500 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors">✏️</button>
+                        <button onclick="confirmDeleteNode('${node.id}')" class="text-slate-400 hover:text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors">🗑️</button>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-4 mb-4 border-b border-slate-100 pb-4">
+                        ${node.image ? `<img src="${node.image}" class="w-full sm:w-1/3 max-w-[200px] h-32 object-cover rounded-xl shadow-sm border border-slate-200">` : ''}
+                        <div class="flex-1 pr-16">
+                            <h3 class="text-xl font-bold text-slate-800">${node.title || 'Без назви'}</h3>
+                            ${node.desc ? `<p class="text-slate-600 text-sm mt-1 whitespace-pre-wrap">${node.desc}</p>` : ''}
+                        </div>
+                    </div>
+                    <div class="space-y-3 pl-2 sm:pl-6">
+                        ${node.steps.map((step, sIdx) => `
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 relative group">
+                                <div class="absolute top-2 right-2 flex gap-1">
+                                    <button onclick="editStep('${node.id}', '${step.id}')" class="text-slate-400 hover:text-emerald-500 bg-white hover:bg-emerald-50 p-1.5 rounded shadow-sm transition-colors">✏️</button>
+                                    <button onclick="confirmDeleteStep('${node.id}', '${step.id}')" class="text-slate-400 hover:text-red-500 bg-white hover:bg-red-50 p-1.5 rounded shadow-sm transition-colors">🗑️</button>
+                                </div>
+                                <div class="flex gap-3 items-start mt-4 sm:mt-0">
+                                    <span class="bg-emerald-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow">${sIdx+1}</span>
+                                    <div class="flex-1 pr-12">
+                                        ${step.text ? `<p class="text-slate-800 text-sm whitespace-pre-wrap mb-3 leading-relaxed">${step.text}</p>` : ''}
+                                        ${step.images && step.images.length ? `<div class="flex flex-wrap gap-2 mb-2">${step.images.map(i=>`<img src="${i}" class="h-24 rounded-lg border border-slate-200 shadow-sm object-cover">`).join('')}</div>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                        <button onclick="openStepModal('${node.id}')" class="mt-4 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl flex items-center gap-2 transition-colors border border-indigo-100">
+                            ➕ Додати дію
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.confirmDeleteNode = (id) => { if(confirm("Видалити вузол?")) { state.nodes = state.nodes.filter(n=>n.id!==id); renderNodes(); saveLocal(); } };
+        window.confirmDeleteStep = (nId, sId) => { if(confirm("Видалити дію?")) { const node = state.nodes.find(n=>n.id===nId); if(node) { node.steps = node.steps.filter(s=>s.id!==sId); renderNodes(); saveLocal(); } } };
+
+        window.openStepModal = (nodeId) => {
+            activeNodeIdForStep = nodeId; editingStepId = null;
+            DOM.modalText.value = ''; tempStepImages = []; tempStepVideoUrl = null;
+            updateModalMediaUI(); DOM.modalVideoPrev.classList.add('hidden'); DOM.stepModal.classList.remove('hidden');
+        };
+
+        // ================= НАЛАШТУВАННЯ =================
+
+        // Перемальовує поля вкладки «Налаштування» зі state
+        function fillSettingsFields() {
+            if (!DOM.setEmail) return;
+            DOM.setEmail.value        = state.settings.email || '';
+            DOM.setDrive.value        = state.settings.driveId || '';
+            DOM.setPhotoDrive.value   = state.settings.photoDriveId || '';
+            DOM.setSinglePage.checked = state.settings.singlePage !== false;
+            DOM.setApi.value          = state.settings.apiKey || '';
+        }
+
+        // Тягне налаштування з вкладки «Налаштування» Google-таблиці.
+        // Локальні лишаються запасним варіантом, тому падіння запиту
+        // (немає інтернету) додаток не ламає.
+        async function syncSettingsFromServer() {
+            try {
+                const res = await postToScript({ action: 'get_settings' });
+                const s = res.settings || {};
+                ['email', 'driveId', 'photoDriveId', 'apiKey', 'aiModel'].forEach(k => {
+                    if (s[k] !== undefined && String(s[k]).trim() !== '') {
+                        state.settings[k] = String(s[k]).trim();
+                    }
+                });
+                if (s.singlePage !== undefined) {
+                    state.settings.singlePage = (s.singlePage === true) ||
+                        /^(true|1|так|yes)$/i.test(String(s.singlePage).trim());
+                }
+                fillSettingsFields();
+                saveLocal();
+            } catch (e) {
+                console.log("Налаштування з таблиці не завантажились: " + e.message);
+            }
+        }
+
+        function setupSettings() {
+            if(DOM.saveSetBtn) DOM.saveSetBtn.onclick = async () => {
+                // Зберігаємо поля, НЕ затираючи логотип
+                state.settings.email = DOM.setEmail.value.trim();
+                state.settings.driveId = DOM.setDrive.value.trim();
+                state.settings.photoDriveId = DOM.setPhotoDrive.value.trim();
+                state.settings.singlePage = DOM.setSinglePage.checked;
+                const newKey = DOM.setApi.value.trim();
+                // ключ змінився -> забуваємо запам'ятану модель, підберемо наново
+                if (newKey !== state.settings.apiKey) state.settings.aiModel = '';
+                state.settings.apiKey = newKey;
+                saveLocal();
+
+                // ...і одразу в таблицю, щоб інші пристрої підхопили
+                DOM.saveSetBtn.disabled = true;
+                const oldLabel = DOM.saveSetBtn.textContent;
+                DOM.saveSetBtn.textContent = 'Зберігаю...';
+                try {
+                    await postToScript({
+                        action: 'save_settings',
+                        settings: {
+                            email:        state.settings.email,
+                            driveId:      state.settings.driveId,
+                            photoDriveId: state.settings.photoDriveId,
+                            singlePage:   state.settings.singlePage,
+                            apiKey:       state.settings.apiKey,
+                            aiModel:      state.settings.aiModel || ''
+                        }
+                    });
+                    showToast("✅ Налаштування збережено у таблицю");
+                } catch (e) {
+                    showToast("Збережено лише на цьому пристрої: " + e.message, true, 5000);
+                } finally {
+                    DOM.saveSetBtn.disabled = false;
+                    DOM.saveSetBtn.textContent = oldLabel;
+                }
+            };
+
+            // Завантаження власного логотипу (стискаємо до висоти 120px)
+            if (DOM.setLogoInp) DOM.setLogoInp.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const MAXH = 120;
+                        const scale = Math.min(MAXH / img.height, 1);
+                        const c = document.createElement('canvas');
+                        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+                        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                        const dataUrl = c.toDataURL('image/png'); // png — зберігає прозорість лого
+                        state.settings.logo = dataUrl;
+                        DOM.setLogoPrev.src = dataUrl; DOM.setLogoPrevBox.classList.remove('hidden');
+                        DOM.appLogo.src = dataUrl;
+                        saveLocal();
+                        showToast("✅ Логотип збережено — тепер він буде в кожному PDF");
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+                DOM.setLogoInp.value = '';
+            };
+
+            if (DOM.removeLogoBtn) DOM.removeLogoBtn.onclick = () => {
+                state.settings.logo = null;
+                DOM.setLogoPrevBox.classList.add('hidden');
+                DOM.appLogo.src = runtimeLogo || LOCAL_LOGO_URL;
+                saveLocal();
+                showToast("Логотип видалено");
+            };
+
+            if (DOM.checkKeyBtn) DOM.checkKeyBtn.onclick = async () => {
+                const key = DOM.setApi.value.trim(); const statusEl = DOM.keyStatusMsg;
+                if (!key) { statusEl.className = 'mt-2 text-xs font-bold text-red-600'; statusEl.innerHTML = '⚠️ Ключ не введено'; statusEl.classList.remove('hidden'); return; }
+                statusEl.className = 'mt-2 text-xs font-bold text-slate-500'; statusEl.innerHTML = '⏳ З\'єднуюсь...'; statusEl.classList.remove('hidden');
+                try {
+                    state.settings.apiKey = key;
+                    // force=true — перезапитуємо список моделей, а не беремо з пам'яті
+                    const model = await resolveAiModel(key, true);
+                    statusEl.className = 'mt-2 text-xs font-bold text-green-600';
+                    statusEl.innerHTML = '✅ Ключ дійсний. Модель: ' + model;
+                    saveLocal();
+                } catch (e) {
+                    statusEl.className = 'mt-2 text-xs font-bold text-red-600';
+                    statusEl.textContent = '⚠️ ' + e.message;
+                }
+            };
+            if (DOM.setApi) DOM.setApi.addEventListener('input', () => DOM.keyStatusMsg.classList.add('hidden'));
+
+            // ДІАГНОСТИКА ЗВ'ЯЗКУ З APPS SCRIPT
+            if (DOM.testConnBtn) DOM.testConnBtn.onclick = async () => {
+                const el = DOM.connStatusMsg;
+                el.className = 'mt-2 text-xs font-bold text-slate-500 whitespace-pre-wrap'; el.textContent = '⏳ Перевіряю з\'єднання...'; el.classList.remove('hidden');
+                try {
+                    const res = await fetch(GOOGLE_SCRIPT_URL, { method: 'GET' });
+                    const text = await res.text();
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    if (text.trim().startsWith('<')) {
+                        // Прийшов HTML замість тексту скрипта — це сторінка входу або помилка деплою
+                        el.className = 'mt-2 text-xs font-bold text-red-600 whitespace-pre-wrap';
+                        el.textContent = "⚠️ Скрипт відповів сторінкою входу Google.\nУ розгортанні поставте доступ: «Будь-хто» (Anyone) і створіть НОВУ версію.";
+                    } else {
+                        el.className = 'mt-2 text-xs font-bold text-green-600 whitespace-pre-wrap';
+                        el.textContent = "✅ Зв'язок є. Відповідь сервера:\n" + text.substring(0, 300);
+                    }
+                } catch (e) {
+                    el.className = 'mt-2 text-xs font-bold text-red-600 whitespace-pre-wrap';
+                    el.textContent = "❌ Немає зв'язку зі скриптом (" + e.message + ").\nПеревірте: 1) URL розгортання; 2) доступ «Будь-хто»; 3) чи створена НОВА версія після зміни коду.";
+                }
+            };
+        }
+
+        // ================= ГЕНЕРАЦІЯ PDF-ШАБЛОНУ =================
+        function generatePDFHtml() {
+            // Лого в PDF: завжди локальний base64 (свій / з сайту / вбудований) — ніякого CORS
+            document.getElementById('pdf-logo').src = getActiveLogo();
+
+            document.getElementById('pdf-doc-title').textContent = state.title || 'Інструкція з налаштування';
+            document.getElementById('pdf-doc-eq').textContent = state.equipment ? `Обладнання: ${state.equipment}` : '';
+            document.getElementById('pdf-date-footer').textContent = new Date().toLocaleString('uk-UA');
+
+            const pdfMain = document.getElementById('pdf-main-image');
+            const pdfMainBox = document.getElementById('pdf-main-image-container');
+            const pdfBreak = document.getElementById('pdf-page-break');
+            if(state.mainImage) {
+                pdfMain.src = state.mainImage;
+                pdfMain.style.display = 'inline-block';
+                pdfMainBox.style.display = 'block';
+                if (pdfBreak) pdfBreak.classList.remove('is-off');
+            } else {
+                pdfMain.removeAttribute('src');
+                pdfMain.style.display = 'none';
+                pdfMainBox.style.display = 'none';
+                // без головного фото примусовий розрив давав порожню першу сторінку
+                if (pdfBreak) pdfBreak.classList.add('is-off');
+            }
+
+            let html = '';
+            state.nodes.forEach((node) => {
+                html += `
+                <div class="avoid-page-break" style="padding: 1.25rem; margin-bottom: 1.5rem; background-color: white; border-radius: 1rem; border: 1px solid #e2e8f0; border-left: 4px solid #6366f1; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+                    <div class="avoid-page-break" style="display: flex; flex-direction: row; gap: 1.5rem; margin-bottom: 1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 1rem; align-items: flex-start;">
+                        ${node.image ? `<div style="flex: 0 0 45%; max-width: 350px;"><img src="${node.image}" style="width: 100%; height: auto; max-height: 250px; border-radius: 0.75rem; border: 1px solid #e2e8f0; background: #f8fafc; padding: 4px;"></div>` : ''}
+                        <div style="flex: 1;">
+                            <h3 style="font-size: 1.25rem; font-weight: 700; color: #1e293b; margin: 0 0 0.5rem 0;">${node.title || 'Без назви'}</h3>
+                            ${node.desc ? `<p style="color: #475569; font-size: 0.95rem; margin: 0; white-space: pre-wrap; line-height: 1.5;">${node.desc}</p>` : ''}
+                        </div>
+                    </div>
+                    <div style="padding-left: 0.5rem;">
+                `;
+
+                if(node.steps && node.steps.length > 0) {
+                    node.steps.forEach((step, idx) => {
+                        html += `
+                            <div class="avoid-page-break" style="background-color: #f8fafc; padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e2e8f0; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: flex-start;">
+                                <div style="background-color: #10b981; color: white; width: 1.75rem; height: 1.75rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; font-weight: 700; flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); margin-top: 0.25rem;">${idx+1}</div>
+                                <div style="flex: 1; display: flex; flex-direction: row; gap: 1.5rem; align-items: flex-start;">
+                                    ${step.images && step.images.length ?
+                                        `<div style="flex: 0 0 45%; max-width: 350px; display: flex; flex-direction: column; gap: 0.75rem;">
+                                            ${step.images.map(i=>`<img src="${i}" style="width: 100%; height: auto; max-height: 250px; border-radius: 0.5rem; border: 1px solid #cbd5e1; background: white; padding: 4px;">`).join('')}
+                                        </div>`
+                                    : ''}
+                                    <div style="flex: 1;">
+                                        ${step.text ? `<p style="color: #1e293b; font-size: 0.95rem; white-space: pre-wrap; margin: 0; line-height: 1.6;">${step.text}</p>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                html += `</div></div>`;
+            });
+
+            document.getElementById('pdf-nodes-container').innerHTML = html;
+        }
+
+        async function waitForImages(container) {
+            const imgs = [...container.querySelectorAll("img")].filter(img => img.getAttribute('src'));
+            await Promise.all(imgs.map(img => {
+                if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                return new Promise(resolve => {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                    setTimeout(resolve, 8000); // страховка від вічного очікування
+                });
+            }));
+        }
+
+        function safeFileName(t) {
+            const base = String(t || 'Інструкція').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().substring(0, 60);
+            return base || 'Інструкція';
+        }
+
+        // pageFormat: 'a4' або [ширина, висота] в мм для суцільного аркуша
+        function getPdfConfig(scale, pageFormat) {
+            const continuous = Array.isArray(pageFormat);
+            return {
+                margin: 10,
+                filename: safeFileName(state.title) + '.pdf',
+                image: { type: 'jpeg', quality: 0.9 },
+                // На суцільному аркуші розриви не потрібні — вимикаємо їх зовсім
+                pagebreak: continuous ? { mode: [] } : { mode: ['css', 'legacy'] },
+                html2canvas: {
+                    scale: scale,
+                    useCORS: true,
+                    allowTaint: false,
+                    imageTimeout: 5000,   // не чекати вічно на биті картинки
+                    scrollY: 0,
+                    logging: false
+                },
+                jsPDF: { unit: 'mm', format: pageFormat || 'a4', orientation: 'portrait' }
+            };
+        }
+
+        function showGenOverlay(text) {
+            DOM.genOverlayText.textContent = text || 'Генерується PDF...';
+            DOM.genOverlay.classList.add('show');
+        }
+        function hideGenOverlay() {
+            DOM.genOverlay.classList.remove('show');
+        }
+
+        // ================= СТВОРЕННЯ PDF =================
+        // ОДНА функція для всіх трьох кнопок. Повертає Blob —
+        // його можна і завантажити локально, і закодувати та відправити.
+        async function createPdf(onStatus) {
+            if (typeof html2pdf === 'undefined') {
+                throw new Error("Бібліотека html2pdf не завантажилась. Перевірте інтернет і перезавантажте сторінку.");
+            }
+
+            const pdfEl = document.getElementById("pdf-template");
+            generatePDFHtml();
+            pdfEl.classList.remove("hidden");
+            document.body.classList.add("pdf-export-mode");
+
+            try {
+                if (onStatus) onStatus("Готую сторінку...");
+                await new Promise(r => requestAnimationFrame(r));
+                await new Promise(r => setTimeout(r, 250));
+                await waitForImages(pdfEl);
+
+                // --- ДИНАМІЧНИЙ МАСШТАБ ---
+                // html2canvas малює ВЕСЬ документ на один canvas. У браузерів
+                // (особливо iPhone/Safari) є ліміт ~16 млн пікселів: якщо його
+                // перевищити — canvas стає порожнім і PDF виходить ПУСТИМ.
+                const w = pdfEl.scrollWidth || 900;
+                const h = pdfEl.scrollHeight || 1200;
+                const MAX_PIXELS = 13000000;
+                let scale = Math.sqrt(MAX_PIXELS / (w * h));
+                scale = Math.min(1.5, Math.max(0.6, scale));
+
+                if (onStatus) onStatus("Генерую PDF...");
+
+                // --- СУЦІЛЬНИЙ АРКУШ ---
+                // Замість А4 робимо один аркуш заввишки з увесь документ.
+                // Ширину лишаємо 210 мм, висоту рахуємо за пропорціями сторінки.
+                let pageFormat = null;
+                if (state.settings.singlePage !== false) {
+                    const MARGIN = 10;
+                    const PAGE_W = 210;
+                    const MAX_H = 5000;   // межа формату PDF — близько 5080 мм
+                    let pageH = (PAGE_W - MARGIN * 2) * (h / w) + MARGIN * 2;
+
+                    if (pageH > MAX_H) {
+                        // Документ надто довгий для одного аркуша — вертаємось до А4
+                        showToast("Документ задовгий для суцільного аркуша — зроблено посторінково", false, 6000);
+                    } else {
+                        pageFormat = [PAGE_W, Math.ceil(pageH)];
+                        const pdfBreak = document.getElementById('pdf-page-break');
+                        if (pdfBreak) pdfBreak.classList.add('is-off');
+                    }
+                }
+
+                const blob = await html2pdf().set(getPdfConfig(scale, pageFormat)).from(pdfEl).outputPdf('blob');
+
+                if (!blob || blob.size < 5000) {
+                    throw new Error(`PDF згенерувався порожнім (${blob ? blob.size : 0} байт). Спробуйте зменшити кількість фото або оновити сторінку.`);
+                }
+
+                return {
+                    blob: blob,
+                    sizeBytes: blob.size,
+                    sizeMb: (blob.size / 1048576).toFixed(1),
+                    filename: safeFileName(state.title) + '.pdf'
+                };
+            } finally {
+                // ЗАВЖДИ повертаємо інтерфейс, навіть якщо була помилка
+                document.body.classList.remove("pdf-export-mode");
+                pdfEl.classList.add("hidden");
+            }
+        }
+
+        // Blob -> dataURL (потрібно лише для відправки на сервер)
+        function blobToDataUrl(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error("Не вдалося прочитати згенерований PDF."));
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        // Локальна віддача файлу: на телефоні — системне меню "Поділитися",
+        // на комп'ютері (і як запасний варіант) — звичайне завантаження.
+        async function deliverPdfLocally(blob, filename) {
+            try {
+                const file = new File([blob], filename, { type: 'application/pdf' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({ files: [file], title: filename });
+                    return "shared";
+                }
+            } catch (e) {
+                if (e && e.name === 'AbortError') return "cancelled"; // користувач сам закрив меню
+                // будь-яка інша помилка — просто завантажуємо файл
+            }
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            return "downloaded";
+        }
+
+        // ================= ВІДПРАВКА НА СЕРВЕР =================
+        // Один надійний канал для всіх запитів до Apps Script.
+        async function postToScript(payload, onStatus) {
+            if (onStatus) onStatus("Відправляю на сервер...");
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+            let response;
+            try {
+                response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    // text/plain — свідомо: JSON-заголовок ламає CORS для Apps Script
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                });
+            } catch (netErr) {
+                if (netErr.name === 'AbortError') {
+                    throw new Error("Сервер не відповів за 3 хвилини. Можливо, файл завеликий або поганий інтернет.");
+                }
+                throw new Error("Немає з'єднання зі скриптом. Перевірте інтернет та розгортання (доступ «Будь-хто», НОВА версія). Деталі: " + netErr.message);
+            } finally {
+                clearTimeout(timer);
+            }
+
+            const rawText = await response.text();
+
+            if (!response.ok) {
+                throw new Error("Сервер повернув помилку HTTP " + response.status + ". Перевірте розгортання скрипта.");
+            }
+
+            let result;
+            try {
+                result = JSON.parse(rawText);
+            } catch (e) {
+                // Прийшов HTML (логін Google / сторінка помилки Apps Script)
+                if (rawText.trim().startsWith('<')) {
+                    throw new Error("Скрипт повернув HTML-сторінку замість відповіді. Причини: доступ розгортання не «Будь-хто», або не створена НОВА версія після зміни коду, або скрипт не авторизований (запустіть setupPermissions у редакторі).");
+                }
+                throw new Error("Незрозуміла відповідь сервера: " + rawText.substring(0, 120));
+            }
+
+            if (result.status !== "success") {
+                throw new Error(result.message || "Сервер повідомив про помилку без деталей.");
+            }
+            return result;
+        }
+
+        // ================= ФОТО В ПАПКУ ДИСКУ =================
+        // Фото більше не вставляються картинками в таблицю (це роздувало
+        // таблицю і запит). Вони кладуться повним розміром у папку Диску
+        // з осмисленою назвою, а в комірку йде посилання.
+
+        const PHOTOS_PER_REQUEST = 3;   // скільки фото в одному запиті до сервера
+
+        function cleanNamePart(t, max) {
+            return String(t || '')
+                .replace(/[\\/:*?"<>|#\[\]]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .substring(0, max || 40) || 'без назви';
+        }
+
+        // Плоский список усіх фото документа з готовими іменами файлів.
+        // key прив'язує фото до конкретного рядка майбутньої таблиці.
+        function collectPhotos() {
+            const list = [];
+            state.nodes.forEach((node, ni) => {
+                const nodeName = cleanNamePart(node.title);
+                if (node.image) {
+                    list.push({
+                        key: 'n' + ni,
+                        name: (ni + 1) + '.0 ' + nodeName + ' - загальне фото.jpg',
+                        dataUrl: node.image
+                    });
+                }
+                (node.steps || []).forEach((step, si) => {
+                    (step.images || []).forEach((img, ii) => {
+                        list.push({
+                            key: 'n' + ni + 's' + si + 'i' + ii,
+                            name: (ni + 1) + '.' + (si + 1) + ' ' + nodeName + ' - крок ' + (si + 1) +
+                                  ((step.images.length > 1) ? ' (' + (ii + 1) + ')' : '') + '.jpg',
+                            dataUrl: img
+                        });
+                    });
+                });
+            });
+            return list;
+        }
+
+        // Вивантаження пачками: кожен запит малий, тому не впирається
+        // ні в ліміт часу Apps Script, ні в мобільний інтернет.
+        async function uploadPhotos(photos, onProgress) {
+            const urlMap = {};
+            if (!photos.length) return urlMap;
+
+            let photoFolderId = null;
+            let done = 0;
+
+            for (let i = 0; i < photos.length; i += PHOTOS_PER_REQUEST) {
+                const batch = photos.slice(i, i + PHOTOS_PER_REQUEST);
+                const result = await postToScript({
+                    action: "upload_photos",
+                    title: state.title,
+                    date: new Date().toLocaleString('uk-UA'),
+                    photoDriveId: state.settings.photoDriveId,
+                    photoFolderId: photoFolderId,   // з другої пачки — вже готова підпапка
+                    photos: batch
+                });
+
+                photoFolderId = result.photoFolderId || photoFolderId;
+                Object.assign(urlMap, result.urls || {});
+
+                done += batch.length;
+                if (onProgress) onProgress(done, photos.length);
+            }
+
+            return { urlMap, photoFolderId };
+        }
+
+        // Текст інструкції + посилання на вже вивантажені фото.
+        function buildNodesPayload(urlMap) {
+            const map = urlMap || {};
+            return state.nodes.map((node, ni) => ({
+                title: node.title || '',
+                desc: node.desc || '',
+                imageUrls: map['n' + ni] ? [map['n' + ni]] : [],
+                steps: (node.steps || []).map((step, si) => ({
+                    text: step.text || '',
+                    imageUrls: (step.images || [])
+                        .map((img, ii) => map['n' + ni + 's' + si + 'i' + ii])
+                        .filter(Boolean)
+                }))
+            }));
+        }
+
+        function setButtonBusy(btn, busyText) {
+            if (!btn.dataset.original) btn.dataset.original = btn.innerHTML;
+            btn.innerHTML = `<span class="text-lg">⏳</span> ${busyText}`;
+            btn.disabled = true;
+        }
+        function setButtonStatus(btn, text) {
+            btn.innerHTML = `<span class="text-lg">⏳</span> ${text}`;
+        }
+        function restoreButton(btn) {
+            if (btn.dataset.original) btn.innerHTML = btn.dataset.original;
+            btn.disabled = false;
+        }
+
+        // ================= ГОЛОВНІ КНОПКИ =================
+        function setupButtons() {
+            if(DOM.btnNewDoc) DOM.btnNewDoc.onclick = () => {
+                state.docId = crypto.randomUUID(); state.title = ''; state.equipment = ''; state.mainImage = null; state.nodes = [];
+                DOM.title.value = ''; DOM.eq.value = '';
+                saveLocal(); DOM.tabEd.click();
+            };
+
+            // -------- ЛОКАЛЬНИЙ PDF (зберегти / поділитися) --------
+            // Раніше тут був window.print(): на телефонах він асинхронний,
+            // тому finally знімав pdf-export-mode ще ДО появи діалогу друку
+            // і на друк ішов інтерфейс додатку або порожня сторінка.
+            // Тепер генеруємо справжній файл і віддаємо його користувачу.
+            if(DOM.pdfBtn) DOM.pdfBtn.onclick = async () => {
+                saveLocal();
+                if(!state.title && !state.nodes.length) return showToast("Спочатку створіть інструкцію", true);
+
+                setButtonBusy(DOM.pdfBtn, "Готую...");
+                showGenOverlay("Готую документ...");
+                try {
+                    window.scrollTo(0, 0);
+
+                    const pdf = await createPdf(txt => { setButtonStatus(DOM.pdfBtn, txt); showGenOverlay(txt); });
+
+                    showGenOverlay("Зберігаю файл...");
+                    const how = await deliverPdfLocally(pdf.blob, pdf.filename);
+
+                    if (how === "cancelled") showToast("Скасовано", false);
+                    else if (how === "shared") showToast(`✅ PDF відправлено (${pdf.sizeMb} МБ)`, false, 5000);
+                    else showToast(`✅ PDF збережено: ${pdf.filename} (${pdf.sizeMb} МБ)`, false, 6000);
+                } catch (e) {
+                    console.error("PDF ERROR:", e);
+                    showToast("❌ " + e.message, true, 8000);
+                } finally {
+                    hideGenOverlay();
+                    restoreButton(DOM.pdfBtn);
+                }
+            };
+
+            // -------- ВІДПРАВКА НА ПОШТУ --------
+            if(DOM.emailBtn) DOM.emailBtn.onclick = async () => {
+                saveLocal();
+                if(!state.title) return showToast("Вкажіть назву інструкції", true);
+                if(!state.nodes.length) return showToast("Додайте хоча б один вузол", true);
+                if(!state.settings.email) { showToast("Вкажіть Email у налаштуваннях і натисніть «Зберегти»!", true, 5000); return DOM.tabSet.click(); }
+
+                setButtonBusy(DOM.emailBtn, "Готую...");
+                showGenOverlay("Готую документ...");
+                try {
+                    window.scrollTo(0, 0);
+
+                    const pdf = await createPdf(txt => { setButtonStatus(DOM.emailBtn, txt); showGenOverlay(txt); });
+
+                    // Ліміт вкладення Gmail — 25 МБ. Краще сказати одразу,
+                    // ніж чекати 3 хвилини і отримати помилку сервера.
+                    if (pdf.sizeBytes > 20 * 1024 * 1024) {
+                        throw new Error(`PDF завеликий для пошти (${pdf.sizeMb} МБ, ліміт ~25 МБ). Зменшіть кількість фото або розбийте інструкцію.`);
+                    }
+
+                    setButtonStatus(DOM.emailBtn, "Кодую файл...");
+                    showGenOverlay("Кодую файл...");
+                    const base64 = await blobToDataUrl(pdf.blob);
+
+                    showGenOverlay("Відправляю на пошту...");
+                    const result = await postToScript({
+                        action: "send_report",
+                        title: state.title,
+                        equipment: state.equipment,
+                        date: new Date().toLocaleString('uk-UA'),
+                        email: state.settings.email,
+                        filename: pdf.filename,
+                        pdfBase64: base64
+                    }, txt => setButtonStatus(DOM.emailBtn, txt));
+
+                    showToast("✅ " + result.message + ` (PDF ${pdf.sizeMb} МБ)`, false, 5000);
+                } catch (e) {
+                    console.error("EMAIL ERROR:", e);
+                    showToast("❌ " + e.message, true, 8000);
+                } finally {
+                    hideGenOverlay();
+                    restoreButton(DOM.emailBtn);
+                }
+            };
+
+            // -------- ЗБЕРЕЖЕННЯ PDF У ПАПКУ GOOGLE ДИСКУ --------
+            if(DOM.saveBtn) DOM.saveBtn.onclick = async () => {
+                saveLocal();
+                if(!state.title) return showToast("Вкажіть назву інструкції", true);
+                if(!state.nodes.length) return showToast("Додайте хоча б один вузол", true);
+                // Раніше збереження йшло навіть без ID папки — PDF просто зникав.
+                if(!state.settings.driveId) {
+                    showToast("Вкажіть ID папки Google Диску в налаштуваннях і натисніть «Зберегти»!", true, 6000);
+                    return DOM.tabSet.click();
+                }
+
+                setButtonBusy(DOM.saveBtn, "Готую...");
+                showGenOverlay("Готую документ...");
+                try {
+                    window.scrollTo(0, 0);
+
+                    const pdf = await createPdf(txt => { setButtonStatus(DOM.saveBtn, txt); showGenOverlay(txt); });
+
+                    setButtonStatus(DOM.saveBtn, "Кодую файл...");
+                    showGenOverlay("Кодую файл...");
+                    const base64 = await blobToDataUrl(pdf.blob);
+
+                    // Фото — окремими невеликими запитами, з прогресом
+                    let urlMap = {};
+                    let photoFolderId = null;
+                    const photos = collectPhotos();
+
+                    if (photos.length && state.settings.photoDriveId) {
+                        showGenOverlay("Завантажую фото 0 з " + photos.length + "...");
+                        const res = await uploadPhotos(photos, (done, total) => {
+                            const t = "Завантажую фото " + done + " з " + total + "...";
+                            setButtonStatus(DOM.saveBtn, t);
+                            showGenOverlay(t);
+                        });
+                        urlMap = res.urlMap;
+                        photoFolderId = res.photoFolderId;
+                    }
+
+                    showGenOverlay("Зберігаю PDF та таблицю...");
+                    const result = await postToScript({
+                        action: "save_instruction",
+                        title: state.title,
+                        equipment: state.equipment,
+                        date: new Date().toLocaleString('uk-UA'),
+                        driveId: state.settings.driveId,
+                        photoFolderId: photoFolderId,
+                        filename: pdf.filename,
+                        pdfBase64: base64,
+                        nodes: buildNodesPayload(urlMap)
+                    }, txt => setButtonStatus(DOM.saveBtn, txt));
+
+                    showToast("✅ " + result.message + ` (${pdf.sizeMb} МБ)`, false, 6000);
+                } catch (e) {
+                    console.error("SAVE ERROR:", e);
+                    showToast("❌ " + e.message, true, 8000);
+                } finally {
+                    hideGenOverlay();
+                    restoreButton(DOM.saveBtn);
+                }
+            };
+        }
+
+        // ================= ЛОКАЛЬНЕ ЗБЕРЕЖЕННЯ =================
+        function saveLocal() {
+            state.title = DOM.title.value.trim(); state.equipment = DOM.eq.value.trim();
+            const docData = { id: state.docId, title: state.title, equipment: state.equipment, mainImage: state.mainImage, nodes: state.nodes, date: Date.now() };
+            if (state.title || state.equipment || state.nodes.length > 0 || state.mainImage) {
+                const idx = state.archive.findIndex(a => a.id === state.docId);
+                if (idx > -1) state.archive[idx] = docData; else state.archive.unshift(docData);
+            }
+            try {
+                localStorage.setItem('foodline_data', JSON.stringify({ currentDoc: docData, archive: state.archive, settings: state.settings }));
+            } catch (e) {
+                // localStorage переповнений (фото займають місце)
+                showToast("⚠️ Пам'ять пристрою заповнена — старі документи в архіві можуть не зберегтися", true, 5000);
+            }
+        }
+
+        function loadData() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('foodline_data'));
+                if(saved) {
+                    if(saved.archive) state.archive = saved.archive;
+                    if(saved.settings) state.settings = Object.assign({ email: '', driveId: '', photoDriveId: '1HVA32yxdk2jUMZwDmFeGGbbduelgy266', apiKey: '', aiModel: '', singlePage: true, logo: null }, saved.settings);
+                    if(saved.currentDoc) {
+                        state.docId = saved.currentDoc.id || crypto.randomUUID(); state.title = saved.currentDoc.title || ''; state.equipment = saved.currentDoc.equipment || ''; state.mainImage = saved.currentDoc.mainImage || null; state.nodes = saved.currentDoc.nodes || [];
+                    }
+                }
+            } catch(e){}
+        }
+
+        function renderArchive() {
+            if (state.archive.length === 0) return DOM.archiveList.innerHTML = `<div class="text-center text-slate-400 py-8 card rounded-xl">Архів порожній</div>`;
+            DOM.archiveList.innerHTML = state.archive.map(ins => `
+                <div class="card p-4 rounded-xl cursor-pointer hover:border-emerald-400 archive-item transition-all hover:shadow-md" data-id="${ins.id}">
+                    <h3 class="font-bold text-lg text-slate-800">${ins.title || 'Без назви'}</h3>
+                    <p class="text-slate-500 text-sm mt-1">⚙️ ${ins.equipment || 'Не вказано'}</p>
+                    <div class="flex justify-between items-center mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
+                        <span class="bg-slate-100 px-2 py-1 rounded-md font-bold text-slate-500">Вузлів: ${ins.nodes?.length||0}</span>
+                        <span>${new Date(ins.date).toLocaleDateString()}</span>
+                    </div>
+                </div>
+            `).join('');
+            document.querySelectorAll('.archive-item').forEach(el => el.onclick = (e) => {
+                const doc = state.archive.find(a => a.id === e.currentTarget.getAttribute('data-id'));
+                if(doc) { state.docId=doc.id; state.title=doc.title; state.equipment=doc.equipment; state.mainImage=doc.mainImage; state.nodes=doc.nodes||[]; saveLocal(); DOM.tabEd.click(); }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
