@@ -109,7 +109,7 @@
                         </div>
                         <label id="main-photo-label" class="flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100 cursor-pointer text-slate-600 font-medium transition-colors">
                             📷 Додати загальне фото
-                            <input type="file" id="main-photo-input" accept="image/*" capture="environment" class="hidden">
+                            <input type="file" id="main-photo-input" accept="image/*" class="hidden">
                         </label>
                     </div>
                 </div>
@@ -140,7 +140,7 @@
                     <div class="flex flex-wrap gap-2 items-center justify-between mt-3">
                         <label id="node-photo-label" class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 cursor-pointer font-bold text-sm shadow-sm transition-colors">
                             📷 Фото вузла
-                            <input type="file" id="node-photo-input" accept="image/*" capture="environment" class="hidden">
+                            <input type="file" id="node-photo-input" accept="image/*" class="hidden">
                         </label>
                         <button id="add-node-btn" class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 transition-all text-sm">Зберегти вузол</button>
                     </div>
@@ -254,20 +254,10 @@
                 
                 <div id="modal-media-preview" class="hidden flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200"></div>
                 
-                <div id="modal-video-preview" class="hidden flex items-center justify-between gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-200">
-                    <span>🎥 Відео додано</span>
-                    <button id="remove-modal-video" class="text-indigo-400 hover:text-red-500 text-lg">✕</button>
-                </div>
-
                 <div class="flex flex-wrap gap-2 items-center">
                     <label id="modal-photo-label" class="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer text-sm font-bold shadow-sm transition-colors text-slate-700">
                         📷 Додати фото
-                        <input type="file" id="modal-photo-input" accept="image/*" capture="environment" multiple class="hidden">
-                    </label>
-
-                    <label id="modal-video-label" class="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer text-sm font-bold shadow-sm transition-colors text-slate-700">
-                        🎥 Додати відео
-                        <input type="file" id="modal-video-input" accept="video/*" capture="environment" class="hidden">
+                        <input type="file" id="modal-photo-input" accept="image/*" multiple class="hidden">
                     </label>
                 </div>
             </div>
@@ -377,7 +367,7 @@
         };
 
         let tempNodeImage = null; let activeNodeIdForStep = null;
-        let tempStepImages = []; let tempStepVideoUrl = null; let editingStepId = null;
+        let tempStepImages = []; let editingStepId = null;
         let editingNodeId = null;
         let DOM = {};
 
@@ -389,7 +379,7 @@
                 title: document.getElementById('doc-title'), eq: document.getElementById('doc-eq'),
                 mainImgInp: document.getElementById('main-photo-input'), mainImgPrev: document.getElementById('main-image-preview'), mainImgBox: document.getElementById('main-image-preview-container'), removeMainImg: document.getElementById('remove-main-img'),
                 nodesCont: document.getElementById('nodes-container'), nodeTitle: document.getElementById('node-title'), nodeDesc: document.getElementById('node-desc'), nodeImgInp: document.getElementById('node-photo-input'), nodeImgPrevBox: document.getElementById('node-img-preview-box'), nodeImgPrev: document.getElementById('node-img-preview'), removeNodeImg: document.getElementById('remove-node-img'), addNodeBtn: document.getElementById('add-node-btn'),
-                stepModal: document.getElementById('step-modal'), closeStepModal: document.getElementById('close-step-modal'), modalText: document.getElementById('modal-step-text'), modalPhotoInp: document.getElementById('modal-photo-input'), modalMediaPrev: document.getElementById('modal-media-preview'), modalVideoInp: document.getElementById('modal-video-input'), modalVideoPrev: document.getElementById('modal-video-preview'), removeModalVideo: document.getElementById('remove-modal-video'), modalSaveBtn: document.getElementById('modal-save-btn'), modalClearBtn: document.getElementById('modal-clear-btn'),
+                stepModal: document.getElementById('step-modal'), closeStepModal: document.getElementById('close-step-modal'), modalText: document.getElementById('modal-step-text'), modalPhotoInp: document.getElementById('modal-photo-input'), modalMediaPrev: document.getElementById('modal-media-preview'), modalSaveBtn: document.getElementById('modal-save-btn'), modalClearBtn: document.getElementById('modal-clear-btn'),
                 setEmail: document.getElementById('set-email'), setDrive: document.getElementById('set-drive'), setPhotoDrive: document.getElementById('set-photo-drive'), setSinglePage: document.getElementById('set-single-page'), setApi: document.getElementById('set-api-key'), saveSetBtn: document.getElementById('save-settings-btn'), checkKeyBtn: document.getElementById('check-key-btn'), keyStatusMsg: document.getElementById('key-status-msg'),
                 testConnBtn: document.getElementById('test-conn-btn'), connStatusMsg: document.getElementById('conn-status-msg'),
                 setLogoInp: document.getElementById('set-logo-input'), setLogoPrev: document.getElementById('set-logo-preview'), setLogoPrevBox: document.getElementById('set-logo-preview-box'), removeLogoBtn: document.getElementById('remove-logo-btn'),
@@ -505,8 +495,6 @@
             DOM.removeNodeImg.onclick = () => { tempNodeImage = null; DOM.nodeImgPrevBox.classList.add('hidden'); DOM.nodeImgInp.value = ''; };
 
             DOM.modalPhotoInp.onchange = (e) => { Array.from(e.target.files).forEach(f => { processImageFile(f, (d) => { tempStepImages.push(d); updateModalMediaUI(); }); }); DOM.modalPhotoInp.value = ''; };
-            DOM.modalVideoInp.onchange = (e) => { const f = e.target.files[0]; if(f) { tempStepVideoUrl = URL.createObjectURL(f); DOM.modalVideoPrev.classList.remove('hidden'); showToast("Увага: відео зберігається лише на цьому пристрої до перезавантаження", false, 5000); } };
-            DOM.removeModalVideo.onclick = () => { tempStepVideoUrl = null; DOM.modalVideoPrev.classList.add('hidden'); DOM.modalVideoInp.value = ''; };
         }
 
         function updateModalMediaUI() {
@@ -889,19 +877,19 @@
         function setupModalButtons() {
             if(DOM.closeStepModal) DOM.closeStepModal.onclick = () => DOM.stepModal.classList.add('hidden');
             if(DOM.modalClearBtn) DOM.modalClearBtn.onclick = () => {
-                DOM.modalText.value = ''; tempStepImages = []; tempStepVideoUrl = null;
-                updateModalMediaUI(); DOM.modalVideoPrev.classList.add('hidden');
+                DOM.modalText.value = ''; tempStepImages = [];
+                updateModalMediaUI();
             };
             if(DOM.modalSaveBtn) DOM.modalSaveBtn.onclick = () => {
                 const txt = DOM.modalText.value.trim();
-                if(!txt && !tempStepImages.length && !tempStepVideoUrl) return showToast("Додайте текст або фото", true);
+                if(!txt && !tempStepImages.length) return showToast("Додайте текст або фото", true);
                 const node = state.nodes.find(n=>n.id===activeNodeIdForStep);
                 if(node) {
                     if(editingStepId) {
                         const step = node.steps.find(s=>s.id===editingStepId);
-                        step.text = txt; step.images = [...tempStepImages]; step.videoUrl = tempStepVideoUrl;
+                        step.text = txt; step.images = [...tempStepImages];
                     } else {
-                        node.steps.push({ id: crypto.randomUUID(), text: txt, images: [...tempStepImages], videoUrl: tempStepVideoUrl });
+                        node.steps.push({ id: crypto.randomUUID(), text: txt, images: [...tempStepImages] });
                     }
                     DOM.stepModal.classList.add('hidden'); renderNodes(); saveLocal();
                 }
@@ -945,7 +933,7 @@
         window.editStep = (nId, sId) => {
             activeNodeIdForStep = nId; editingStepId = sId;
             const step = state.nodes.find(n=>n.id===nId).steps.find(s=>s.id===sId);
-            DOM.modalText.value = step.text || ''; tempStepImages = step.images ? [...step.images] : []; tempStepVideoUrl = step.videoUrl || null;
+            DOM.modalText.value = step.text || ''; tempStepImages = step.images ? [...step.images] : [];
             updateModalMediaUI(); DOM.stepModal.classList.remove('hidden');
         };
 
@@ -995,8 +983,8 @@
 
         window.openStepModal = (nodeId) => {
             activeNodeIdForStep = nodeId; editingStepId = null;
-            DOM.modalText.value = ''; tempStepImages = []; tempStepVideoUrl = null;
-            updateModalMediaUI(); DOM.modalVideoPrev.classList.add('hidden'); DOM.stepModal.classList.remove('hidden');
+            DOM.modalText.value = ''; tempStepImages = [];
+            updateModalMediaUI(); DOM.stepModal.classList.remove('hidden');
         };
 
         // ================= НАЛАШТУВАННЯ =================
