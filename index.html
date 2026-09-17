@@ -2365,6 +2365,7 @@
                 state.cloud.folderUrl = res.folderUrl || state.cloud.folderUrl || '';
                 cloudListCache = null;
                 saveLocal();
+                if (!cloudTimer) startCloudAutoSave();   // після збою автозапис повертаємо
 
                 if (o.manual) {
                     showToast('☁️ Записано у спільну базу' + (uploaded ? (' (+' + uploaded + ' фото)') : ''), false, 4000);
@@ -2372,8 +2373,16 @@
             } catch (e) {
                 console.error('CLOUD SAVE ERROR:', e);
                 cloudLastError = e.message || String(e);
+
+                // Скрипт на сервері ще не знає про спільну базу — це не збій
+                // мережі, повторювати щодві хвилини немає сенсу.
+                if (/Невідома дія/i.test(cloudLastError)) {
+                    cloudLastError = 'на сервері стара версія скрипта. Оновіть код Apps Script і зробіть НОВЕ розгортання.';
+                    stopCloudAutoSave();
+                }
+
                 // Автозапис не сипле тостами — про збій видно в рядку стану
-                if (o.manual) showToast('❌ ' + cloudLastError, true, 8000);
+                if (o.manual) showToast('❌ ' + cloudLastError, true, 9000);
             } finally {
                 cloudBusy = false;
                 renderCloudBar();
@@ -2486,9 +2495,13 @@
                 (busyText ? 'bg-slate-400' : 'bg-sky-600 hover:bg-sky-700');
         }
 
-        function startCloudAutoSave() {
+        function stopCloudAutoSave() {
             clearInterval(cloudTimer);
             cloudTimer = null;
+        }
+
+        function startCloudAutoSave() {
+            stopCloudAutoSave();
             if (!state.settings.cloudAutoSave) return;
 
             const sec = Math.max(30, Number(state.settings.cloudAutoSaveSec) || 120);
