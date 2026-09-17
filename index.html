@@ -67,9 +67,9 @@
                     <img id="app-logo" src="Logo_FLP.jpg" alt="Food Line" class="h-10 w-auto rounded-lg bg-white p-1 shadow-sm" onerror="this.onerror=null;this.src=DEFAULT_LOGO;">
                 </div>
                 <div class="w-1/3 flex justify-end">
-                    <div class="text-xs font-semibold px-3 py-1.5 rounded-full border bg-white flex items-center gap-2 shadow-sm">
-                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500" id="statusDot"></span>
-                        <span id="statusText" class="text-slate-600 hidden sm:inline">Онлайн</span>
+                    <div id="save-status-box" onclick="document.getElementById('tab-archive').click()" title="Стан збереження на пристрої" class="text-xs font-semibold px-2.5 py-1.5 rounded-full border bg-white flex items-center gap-1.5 shadow-sm cursor-pointer">
+                        <span class="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0" id="statusDot"></span>
+                        <span id="statusText" class="text-slate-600 hidden sm:inline">Завантаження…</span>
                     </div>
                 </div>
             </header>
@@ -170,6 +170,7 @@
                     <h2 class="text-xl font-bold text-slate-800">📂 Архів</h2>
                     <button id="btn-new-doc" class="text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100">➕ Створити</button>
                 </div>
+                <div id="storage-box" class="card p-4 rounded-2xl shadow-sm"></div>
                 <div id="archive-list" class="space-y-3"></div>
             </div>
 
@@ -377,6 +378,327 @@
             });
         }
 
+        // ================= СХОВИЩЕ ДОКУМЕНТІВ =================
+        // Раніше весь архів разом із фото (base64) писався в ОДИН ключ
+        // localStorage. Квота localStorage — близько 5 МБ на домен, а одна
+        // інструкція з десятком фото 1000 px важить 1.5–2.5 МБ. Тому на
+        // другому-третьому документі setItem падав з QuotaExceededError —
+        // і не зберігалось НІЧОГО, навіть та інструкція, яку людина щойно
+        // набирала (додаток при цьому писав, що «можуть не зберегтися лише
+        // старі документи в архіві»).
+        //
+        // Тепер дані живуть в IndexedDB: квота там — відсотки від вільного
+        // місця на диску (сотні МБ і більше), і кожен документ пишеться
+        // окремим записом, тому правка однієї інструкції не переписує весь
+        // архів. localStorage лишився резервом (приватний режим, старі
+        // браузери) і дзеркалом налаштувань.
+        const Store = (function () {
+            const DB_NAME     = 'foodline';
+            const DB_VER      = 1;
+            const S_DOCS      = 'docs';
+            const S_KV        = 'kv';
+            const LS_MAIN     = 'foodline_data';      // старий формат + резервний режим
+            const LS_SETTINGS = 'foodline_settings';  // дзеркало налаштувань (дрібниця, завжди влазить)
+
+            let db = null;
+            let mode = 'memory';   // 'idb' | 'ls' | 'memory'
+
+            function lsAvailable() {
+                try {
+                    localStorage.setItem('__fl_probe', '1');
+                    localStorage.removeItem('__fl_probe');
+                    return true;
+                } catch (e) { return false; }
+            }
+
+            function openDb() {
+                return new Promise(function (resolve, reject) {
+                    if (!window.indexedDB) return reject(new Error('IndexedDB недоступна'));
+
+                    let req;
+                    try { req = indexedDB.open(DB_NAME, DB_VER); }
+                    catch (e) { return reject(e); }
+
+                    // Safari у приватному режимі вміє «підвісити» open назавжди
+                    const guard = setTimeout(function () { reject(new Error('Таймаут відкриття бази')); }, 8000);
+
+                    req.onupgradeneeded = function () {
+                        const d = req.result;
+                        if (!d.objectStoreNames.contains(S_DOCS)) d.createObjectStore(S_DOCS, { keyPath: 'id' });
+                        if (!d.objectStoreNames.contains(S_KV))   d.createObjectStore(S_KV);
+                    };
+                    req.onsuccess = function () { clearTimeout(guard); resolve(req.result); };
+                    req.onerror   = function () { clearTimeout(guard); reject(req.error || new Error('Помилка відкриття бази')); };
+                    req.onblocked = function () { clearTimeout(guard); reject(new Error('База зайнята іншою вкладкою додатку')); };
+                });
+            }
+
+            // Одна транзакція = один проміс. Результат беремо з останнього запиту.
+            function run(storeNames, txMode, fn) {
+                return new Promise(function (resolve, reject) {
+                    if (!db) return reject(new Error('База закрита'));
+
+                    let req = null, tx;
+                    try { tx = db.transaction(storeNames, txMode); }
+                    catch (e) { return reject(e); }
+
+                    tx.oncomplete = function () { resolve(req ? req.result : undefined); };
+                    tx.onerror    = function () { reject(tx.error || new Error('Помилка запису в базу')); };
+                    tx.onabort    = function () { reject(tx.error || new Error('Запис у базу скасовано — найімовірніше, немає місця на пристрої')); };
+
+                    try {
+                        let arg;
+                        if (Array.isArray(storeNames)) {
+                            arg = {};
+                            storeNames.forEach(function (n) { arg[n] = tx.objectStore(n); });
+                        } else {
+                            arg = tx.objectStore(storeNames);
+                        }
+                        req = fn(arg);
+                    } catch (e) {
+                        try { tx.abort(); } catch (_) {}
+                        reject(e);
+                    }
+                });
+            }
+
+            function normalizeDoc(d) {
+                if (!d || !d.id) return null;
+                const created = d.date || Date.now();
+                return {
+                    id:        d.id,
+                    title:     d.title || '',
+                    equipment: d.equipment || '',
+                    mainImage: d.mainImage || null,
+                    nodes:     Array.isArray(d.nodes) ? d.nodes : [],
+                    date:      created,                    // коли створено
+                    updated:   d.updated || created        // коли останній раз правили
+                };
+            }
+
+            function byNewest(a, b) {
+                return (b.updated || b.date || 0) - (a.updated || a.date || 0);
+            }
+
+            function mirrorSettings(settings) {
+                const s = settings || {};
+                try { localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); return; } catch (e) {}
+                // не влізло (найчастіше через логотип) — пишемо без нього
+                try {
+                    const lite = Object.assign({}, s);
+                    delete lite.logo;
+                    localStorage.setItem(LS_SETTINGS, JSON.stringify(lite));
+                } catch (e) {}
+            }
+
+            function readMirror() {
+                try { return JSON.parse(localStorage.getItem(LS_SETTINGS)) || null; }
+                catch (e) { return null; }
+            }
+
+            // Переносимо старий єдиний ключ localStorage в IndexedDB і звільняємо його.
+            async function migrateFromLs() {
+                let raw = null;
+                try { raw = localStorage.getItem(LS_MAIN); } catch (e) { return 0; }
+                if (!raw) return 0;
+
+                let old = null;
+                try { old = JSON.parse(raw); } catch (e) {}
+                if (!old) {
+                    try { localStorage.removeItem(LS_MAIN); } catch (_) {}
+                    return 0;
+                }
+
+                const docs = [];
+                const source = (old.v === 2) ? (old.docs || []) : (old.archive || []);
+                source.forEach(function (d) { const n = normalizeDoc(d); if (n) docs.push(n); });
+
+                const cur = normalizeDoc(old.currentDoc);
+                if (cur && !docs.some(function (d) { return d.id === cur.id; })) docs.push(cur);
+                const curId = (old.v === 2) ? (old.currentDocId || null) : (cur ? cur.id : null);
+
+                await run([S_DOCS, S_KV], 'readwrite', function (st) {
+                    docs.forEach(function (d) { st[S_DOCS].put(d); });
+                    if (old.settings) st[S_KV].put(old.settings, 'settings');
+                    return st[S_KV].put(curId, 'currentDocId');
+                });
+
+                // Головне: прибрати мегабайти з localStorage, щоб квота більше не впиралась
+                try { localStorage.removeItem(LS_MAIN); } catch (e) {}
+                if (old.settings) mirrorSettings(old.settings);
+                return docs.length;
+            }
+
+            function lsLoad() {
+                let raw = null;
+                try { raw = localStorage.getItem(LS_MAIN); } catch (e) {}
+
+                let parsed = null;
+                try { parsed = raw ? JSON.parse(raw) : null; } catch (e) {}
+                if (!parsed) return { docs: [], settings: readMirror(), currentDocId: null };
+
+                if (parsed.v === 2) {
+                    const docs = (parsed.docs || []).map(normalizeDoc).filter(Boolean).sort(byNewest);
+                    return { docs: docs, settings: parsed.settings || readMirror(), currentDocId: parsed.currentDocId || null };
+                }
+
+                // старий формат: окремо currentDoc + archive
+                const docs = (parsed.archive || []).map(normalizeDoc).filter(Boolean);
+                const cur = normalizeDoc(parsed.currentDoc);
+                if (cur && !docs.some(function (d) { return d.id === cur.id; })) docs.push(cur);
+                return { docs: docs.sort(byNewest), settings: parsed.settings || readMirror(), currentDocId: cur ? cur.id : null };
+            }
+
+            // Резервний режим: усе в один ключ. Якщо не влазить — відрізаємо
+            // найстаріші документи архіву, але поточний зберігаємо завжди
+            // і чесно повідомляємо, скільких документів позбулися.
+            function lsSave(payload) {
+                const docs = (payload.allDocs || payload.docs || []).map(normalizeDoc).filter(Boolean).sort(byNewest);
+                const curIdx = docs.findIndex(function (d) { return d.id === payload.currentDocId; });
+                if (curIdx > 0) docs.unshift(docs.splice(curIdx, 1)[0]);
+
+                mirrorSettings(payload.settings);
+
+                const write = function (keep) {
+                    localStorage.setItem(LS_MAIN, JSON.stringify({
+                        v: 2,
+                        settings: payload.settings || {},
+                        currentDocId: payload.currentDocId || null,
+                        docs: docs.slice(0, keep)
+                    }));
+                };
+
+                if (!docs.length) {
+                    try { write(0); } catch (e) {}
+                    return { dropped: 0, kept: 0 };
+                }
+
+                for (let keep = docs.length; keep >= 1; keep--) {
+                    try {
+                        write(keep);
+                        return { dropped: docs.length - keep, kept: keep };
+                    } catch (e) {
+                        if (keep === 1) {
+                            throw new Error('пам\'ять браузера заповнена, не вмістилась навіть відкрита інструкція. Збережіть її у PDF і видаліть кілька документів з архіву.');
+                        }
+                    }
+                }
+                return { dropped: 0, kept: 0 };
+            }
+
+            return {
+                mode: function () { return mode; },
+
+                async init() {
+                    try {
+                        db = await openDb();
+                        mode = 'idb';
+                        db.onversionchange = function () {
+                            try { db.close(); } catch (e) {}
+                            db = null;
+                            mode = lsAvailable() ? 'ls' : 'memory';
+                        };
+                    } catch (e) {
+                        console.warn('IndexedDB недоступна — переходжу на localStorage:', e);
+                        mode = lsAvailable() ? 'ls' : 'memory';
+                    }
+
+                    let migrated = 0;
+                    if (mode === 'idb') {
+                        try { migrated = await migrateFromLs(); }
+                        catch (e) { console.warn('Перенесення старих даних не вдалось:', e); }
+
+                        // Щоб Android не викинув дані при автоматичній чистці пам'яті
+                        if (navigator.storage && navigator.storage.persist) {
+                            try {
+                                const already = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+                                if (!already) await navigator.storage.persist();
+                            } catch (e) {}
+                        }
+                    }
+                    return { mode: mode, migrated: migrated };
+                },
+
+                async load() {
+                    if (mode === 'idb') {
+                        try {
+                            const rows     = await run(S_DOCS, 'readonly', function (st) { return st.getAll(); });
+                            const settings = await run(S_KV,   'readonly', function (st) { return st.get('settings'); });
+                            const curId    = await run(S_KV,   'readonly', function (st) { return st.get('currentDocId'); });
+                            return {
+                                docs: (rows || []).map(normalizeDoc).filter(Boolean).sort(byNewest),
+                                settings: settings || readMirror(),
+                                currentDocId: curId || null
+                            };
+                        } catch (e) {
+                            console.warn('Читання з IndexedDB не вдалось:', e);
+                            mode = lsAvailable() ? 'ls' : 'memory';
+                        }
+                    }
+                    if (mode === 'ls') return lsLoad();
+                    return { docs: [], settings: readMirror(), currentDocId: null };
+                },
+
+                // payload: { docs, allDocs, settings, currentDocId }
+                // docs — документи, які змінилися з минулого запису;
+                // allDocs — повний список, потрібен лише резервному режиму.
+                async save(payload) {
+                    if (mode === 'idb') {
+                        try {
+                            await run([S_DOCS, S_KV], 'readwrite', function (st) {
+                                (payload.docs || []).forEach(function (d) {
+                                    const n = normalizeDoc(d);
+                                    if (n) st[S_DOCS].put(n);
+                                });
+                                st[S_KV].put(payload.settings || {}, 'settings');
+                                return st[S_KV].put(payload.currentDocId || null, 'currentDocId');
+                            });
+                            mirrorSettings(payload.settings);
+                            return { dropped: 0, mode: 'idb' };
+                        } catch (e) {
+                            // Місце скінчилось або база зламалась — не мовчимо, а пробуємо резерв
+                            console.warn('Запис у IndexedDB не вдався:', e);
+                            if (!lsAvailable()) throw e;
+                            mode = 'ls';
+                        }
+                    }
+                    if (mode === 'ls') {
+                        const r = lsSave(payload);
+                        r.mode = 'ls';
+                        return r;
+                    }
+                    throw new Error('браузер не дозволяє зберігати дані на цьому пристрої (приватний режим?). Одразу зберігайте інструкцію у PDF.');
+                },
+
+                async remove(id, payload) {
+                    if (mode === 'idb') {
+                        await run(S_DOCS, 'readwrite', function (st) { return st.delete(id); });
+                        return true;
+                    }
+                    if (mode === 'ls') { lsSave(payload); return true; }
+                    return false;   // режим 'memory' — нічого й не було записано
+                },
+
+                async usage() {
+                    if (mode === 'idb' && navigator.storage && navigator.storage.estimate) {
+                        try {
+                            const e = await navigator.storage.estimate();
+                            return { usage: e.usage || 0, quota: e.quota || 0, mode: 'idb' };
+                        } catch (err) {}
+                    }
+                    if (mode === 'ls') {
+                        let used = 0;
+                        try {
+                            used = ((localStorage.getItem(LS_MAIN) || '').length +
+                                    (localStorage.getItem(LS_SETTINGS) || '').length) * 2;
+                        } catch (e) {}
+                        return { usage: used, quota: 5 * 1024 * 1024, mode: 'ls' };
+                    }
+                    return null;
+                }
+            };
+        })();
+
         let state = {
             docId: crypto.randomUUID(), title: '', equipment: '', mainImage: null,
             nodes: [], archive: [],
@@ -404,15 +726,23 @@
                 appLogo: document.getElementById('app-logo'),
                 saveBtn: document.getElementById('save-sheets-btn'), emailBtn: document.getElementById('email-btn'), pdfBtn: document.getElementById('pdf-btn'),
                 archiveList: document.getElementById('archive-list'), btnNewDoc: document.getElementById('btn-new-doc'),
+                storageBox: document.getElementById('storage-box'),
+                saveStatusBox: document.getElementById('save-status-box'), statusDot: document.getElementById('statusDot'), statusText: document.getElementById('statusText'),
                 imgEditorModal: document.getElementById('img-editor-modal')
             };
         }
 
-        function initApp() {
+        async function initApp() {
             try {
                 initDOM();
                 DOM.date.textContent = new Date().toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' });
-                loadData();
+                setSaveStatus('loading');
+
+                // Сховище відкриваємо до першого малювання: інакше можна
+                // почати набирати в порожній документ і затерти збережений.
+                const store = await Store.init();
+                await loadData();
+
                 setupTabs();
                 setupMediaInputs();
                 setupSettings();
@@ -420,10 +750,28 @@
                 setupModalButtons();
                 setupNodeButton();
 
-                DOM.title.addEventListener('input', saveLocal);
-                DOM.eq.addEventListener('input', saveLocal);
+                // Набір тексту — із затримкою. Раніше кожна натиснута літера
+                // переписувала у сховище весь архів разом з фото, і на телефоні
+                // це відчутно гальмувало.
+                DOM.title.addEventListener('input', saveLocalDebounced);
+                DOM.eq.addEventListener('input', saveLocalDebounced);
+
+                // Додаток згортають / закривають — дописуємо те, що ще в черзі
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'hidden') flushSave();
+                });
+                window.addEventListener('pagehide', function () { flushSave(); });
 
                 renderNodes();
+                setSaveStatus('saved');
+
+                if (store.migrated) {
+                    showToast('✅ Архів (' + store.migrated + ' док.) перенесено у велике сховище браузера', false, 6000);
+                } else if (store.mode === 'ls') {
+                    showToast("⚠️ Браузер не дає великого сховища — архів вміщатиме лише кілька документів. Зберігайте інструкції у PDF.", true, 8000);
+                } else if (store.mode === 'memory') {
+                    showToast("⚠️ Браузер не дозволяє зберігати дані (приватний режим?). Інструкція зникне після закриття сторінки — одразу зберігайте PDF.", true, 9000);
+                }
 
                 // Без await — додаток відкривається миттєво,
                 // а налаштування з таблиці підтягуються за секунду
@@ -445,6 +793,14 @@
                 console.error("INIT ERROR:", err);
                 alert("Помилка запуску додатку: " + err.message + "\nПерезавантажте сторінку. Якщо повторюється — надішліть цей текст розробнику.");
             }
+        }
+
+        // Текст користувача йде в шаблони через innerHTML. Без екранування
+        // назва з лапкою чи «<» ламала верстку картки й PDF.
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function showToast(msg, isError = false, durationMs = 3500) {
@@ -992,8 +1348,8 @@
                     <div class="flex flex-col sm:flex-row gap-4 mb-4 border-b border-slate-100 pb-4">
                         ${node.image ? `<img src="${node.image}" class="w-full sm:w-1/3 max-w-[200px] h-32 object-cover rounded-xl shadow-sm border border-slate-200">` : ''}
                         <div class="flex-1 pr-16">
-                            <h3 class="text-xl font-bold text-slate-800">${node.title || 'Без назви'}</h3>
-                            ${node.desc ? `<p class="text-slate-600 text-sm mt-1 whitespace-pre-wrap">${node.desc}</p>` : ''}
+                            <h3 class="text-xl font-bold text-slate-800">${esc(node.title) || 'Без назви'}</h3>
+                            ${node.desc ? `<p class="text-slate-600 text-sm mt-1 whitespace-pre-wrap">${esc(node.desc)}</p>` : ''}
                         </div>
                     </div>
                     <div class="space-y-3 pl-2 sm:pl-6">
@@ -1006,7 +1362,7 @@
                                 <div class="flex gap-3 items-start mt-4 sm:mt-0">
                                     <span class="bg-emerald-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow">${sIdx+1}</span>
                                     <div class="flex-1 pr-12">
-                                        ${step.text ? `<p class="text-slate-800 text-sm whitespace-pre-wrap mb-3 leading-relaxed">${step.text}</p>` : ''}
+                                        ${step.text ? `<p class="text-slate-800 text-sm whitespace-pre-wrap mb-3 leading-relaxed">${esc(step.text)}</p>` : ''}
                                         ${step.images && step.images.length ? `<div class="flex flex-wrap gap-2 mb-2">${step.images.map(i=>`<img src="${i}" class="h-24 rounded-lg border border-slate-200 shadow-sm object-cover">`).join('')}</div>` : ''}
                                     </div>
                                 </div>
@@ -1210,8 +1566,8 @@
                     <div class="avoid-page-break" style="display: flex; flex-direction: row; gap: 1.5rem; margin-bottom: 1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 1rem; align-items: flex-start;">
                         ${node.image ? `<div style="flex: 0 0 45%; max-width: 350px;"><img src="${node.image}" style="width: 100%; height: auto; max-height: 250px; border-radius: 0.75rem; border: 1px solid #e2e8f0; background: #f8fafc; padding: 4px;"></div>` : ''}
                         <div style="flex: 1;">
-                            <h3 style="font-size: 1.25rem; font-weight: 700; color: #1e293b; margin: 0 0 0.5rem 0;">${node.title || 'Без назви'}</h3>
-                            ${node.desc ? `<p style="color: #475569; font-size: 0.95rem; margin: 0; white-space: pre-wrap; line-height: 1.5;">${node.desc}</p>` : ''}
+                            <h3 style="font-size: 1.25rem; font-weight: 700; color: #1e293b; margin: 0 0 0.5rem 0;">${esc(node.title) || 'Без назви'}</h3>
+                            ${node.desc ? `<p style="color: #475569; font-size: 0.95rem; margin: 0; white-space: pre-wrap; line-height: 1.5;">${esc(node.desc)}</p>` : ''}
                         </div>
                     </div>
                     <div style="padding-left: 0.5rem;">
@@ -1229,7 +1585,7 @@
                                         </div>`
                                     : ''}
                                     <div style="flex: 1;">
-                                        ${step.text ? `<p style="color: #1e293b; font-size: 0.95rem; white-space: pre-wrap; margin: 0; line-height: 1.6;">${step.text}</p>` : ''}
+                                        ${step.text ? `<p style="color: #1e293b; font-size: 0.95rem; white-space: pre-wrap; margin: 0; line-height: 1.6;">${esc(step.text)}</p>` : ''}
                                     </div>
                                 </div>
                             </div>
@@ -1690,50 +2046,296 @@
             };
         }
 
-        // ================= ЛОКАЛЬНЕ ЗБЕРЕЖЕННЯ =================
-        function saveLocal() {
-            state.title = DOM.title.value.trim(); state.equipment = DOM.eq.value.trim();
-            const docData = { id: state.docId, title: state.title, equipment: state.equipment, mainImage: state.mainImage, nodes: state.nodes, date: Date.now() };
-            if (state.title || state.equipment || state.nodes.length > 0 || state.mainImage) {
-                const idx = state.archive.findIndex(a => a.id === state.docId);
-                if (idx > -1) state.archive[idx] = docData; else state.archive.unshift(docData);
+        // ================= ЗБЕРЕЖЕННЯ НА ПРИСТРОЇ =================
+        let saveTimer  = null;
+        let lastWarnAt = 0;
+        // Документи, які ще не доїхали до сховища (id -> документ).
+        // Саме черга, а не одна змінна: поки йде запис, користувач може
+        // відкрити з архіву інший документ — і його правки не мають зникнути.
+        const dirtyDocs = new Map();
+        // Записи йдуть строго один за одним, інакше дві транзакції на той самий
+        // документ можуть перезаписати одна одну.
+        let saveQueue = Promise.resolve();
+
+        function snapshotCurrentDoc() {
+            state.title = DOM.title.value.trim();
+            state.equipment = DOM.eq.value.trim();
+            const prev = state.archive.find(a => a.id === state.docId);
+            return {
+                id: state.docId,
+                title: state.title,
+                equipment: state.equipment,
+                mainImage: state.mainImage,
+                nodes: state.nodes,
+                date: (prev && prev.date) || Date.now(),   // дату створення не затираємо
+                updated: Date.now()
+            };
+        }
+
+        // saveLocal() — зберегти негайно (фото, вузол, дія, налаштування).
+        // saveLocalDebounced() — зберегти за пів секунди (набір тексту).
+        function saveLocal(immediate) {
+            const doc = snapshotCurrentDoc();
+            const hasContent = !!(doc.title || doc.equipment || doc.nodes.length || doc.mainImage);
+
+            if (hasContent) {
+                const idx = state.archive.findIndex(a => a.id === doc.id);
+                if (idx > -1) state.archive[idx] = doc; else state.archive.unshift(doc);
+                dirtyDocs.set(doc.id, doc);
             }
+            // порожню чернетку в архів не пишемо — тільки запам'ятовуємо, що вона відкрита
+
+            setSaveStatus('saving');
+            clearTimeout(saveTimer);
+            saveTimer = null;
+
+            if (immediate === false) {
+                saveTimer = setTimeout(flushSave, 500);
+                return;
+            }
+            return flushSave();
+        }
+
+        function saveLocalDebounced() { saveLocal(false); }
+
+        // Повертає проміс запису — можна дочекатися перед довгою операцією.
+        function flushSave() {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+            saveQueue = saveQueue.then(writeNow, writeNow);
+            return saveQueue;
+        }
+
+        async function writeNow() {
+            const docs = Array.from(dirtyDocs.values());
+            dirtyDocs.clear();
+
             try {
-                localStorage.setItem('foodline_data', JSON.stringify({ currentDoc: docData, archive: state.archive, settings: state.settings }));
+                const res = await Store.save({
+                    docs: docs,
+                    allDocs: state.archive,
+                    settings: state.settings,
+                    currentDocId: state.docId
+                });
+
+                if (res.dropped) {
+                    setSaveStatus('trimmed');
+                    warnOnce('⚠️ Місця замало: ' + res.dropped + ' найстаріших документів архіву не збереглись. Видаліть непотрібні у вкладці «Архів».');
+                } else {
+                    setSaveStatus('saved');
+                }
             } catch (e) {
-                // localStorage переповнений (фото займають місце)
-                showToast("⚠️ Пам'ять пристрою заповнена — старі документи в архіві можуть не зберегтися", true, 5000);
+                console.error('SAVE LOCAL ERROR:', e);
+                // Повертаємо незаписане в чергу — наступна дія користувача допише
+                docs.forEach(d => { if (!dirtyDocs.has(d.id)) dirtyDocs.set(d.id, d); });
+                setSaveStatus('error');
+                warnOnce('❌ Не зберігається на пристрої: ' + (e.message || e) + ' Не закривайте сторінку — спершу збережіть PDF.');
             }
         }
 
-        function loadData() {
+        // Одне попередження на 20 секунд — щоб тости не сипались на кожну літеру
+        function warnOnce(msg) {
+            const now = Date.now();
+            if (now - lastWarnAt < 20000) return;
+            lastWarnAt = now;
+            showToast(msg, true, 9000);
+        }
+
+        // Індикатор у шапці. Раніше там завжди світилось декоративне «Онлайн».
+        function setSaveStatus(kind) {
+            if (!DOM.statusDot || !DOM.statusText) return;
+            const map = {
+                loading: ['bg-slate-300',   'Завантаження…', false],
+                saving:  ['bg-amber-400',   'Зберігаю…',     false],
+                saved:   ['bg-emerald-500', 'Збережено',     false],
+                trimmed: ['bg-amber-500',   'Мало місця',    true],
+                error:   ['bg-red-500',     'Не збережено!', true]
+            };
+            const v = map[kind] || map.saved;
+            const bad = v[2];
+            DOM.statusDot.className = 'w-2.5 h-2.5 rounded-full shrink-0 ' + v[0] + (bad ? ' animate-pulse' : '');
+            DOM.statusText.textContent = v[1];
+            DOM.statusText.className = (bad ? 'font-bold ' : 'text-slate-600 ') + 'hidden sm:inline whitespace-nowrap';
+            if (DOM.saveStatusBox) {
+                DOM.saveStatusBox.className = 'text-xs font-semibold px-2.5 py-1.5 rounded-full border flex items-center gap-1.5 shadow-sm cursor-pointer ' +
+                    (bad ? 'bg-red-50 border-red-400 text-red-700' : 'bg-white');
+            }
+        }
+
+        async function loadData() {
+            const data = await Store.load();
+
+            const defaults = { email: 'Buznitskiy7@gmail.com', driveId: '', photoDriveId: '1HVA32yxdk2jUMZwDmFeGGbbduelgy266', apiKey: '', aiModel: '', singlePage: true, logo: null };
+            state.settings = Object.assign(defaults, data.settings || {});
+            state.archive = data.docs || [];
+
+            const cur = state.archive.find(d => d.id === data.currentDocId);
+            if (cur) {
+                state.docId = cur.id;
+                state.title = cur.title || '';
+                state.equipment = cur.equipment || '';
+                state.mainImage = cur.mainImage || null;
+                state.nodes = cur.nodes || [];
+            } else if (data.currentDocId) {
+                // була відкрита порожня чернетка — повертаємо її ж, а не старий документ
+                state.docId = data.currentDocId;
+            } else if (state.archive[0]) {
+                const last = state.archive[0];
+                state.docId = last.id;
+                state.title = last.title || '';
+                state.equipment = last.equipment || '';
+                state.mainImage = last.mainImage || null;
+                state.nodes = last.nodes || [];
+            }
+        }
+
+        // ================= АРХІВ =================
+
+        // Розмір документа рахуємо по довжині base64-рядків фото:
+        // це O(1) на рядок, тому не гальмує навіть на великому архіві.
+        function docBytes(doc) {
+            let n = (doc.title || '').length + (doc.equipment || '').length;
+            if (doc.mainImage) n += doc.mainImage.length;
+            (doc.nodes || []).forEach(nd => {
+                n += (nd.title || '').length + (nd.desc || '').length;
+                if (nd.image) n += nd.image.length;
+                (nd.steps || []).forEach(s => {
+                    n += (s.text || '').length;
+                    (s.images || []).forEach(im => { n += (im || '').length; });
+                });
+            });
+            return n;
+        }
+
+        function docPhotoCount(doc) {
+            let n = doc.mainImage ? 1 : 0;
+            (doc.nodes || []).forEach(nd => {
+                if (nd.image) n++;
+                (nd.steps || []).forEach(s => { n += (s.images || []).length; });
+            });
+            return n;
+        }
+
+        function fmtSize(bytes) {
+            if (!bytes) return '0 КБ';
+            if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' КБ';
+            return (bytes / 1024 / 1024).toFixed(1) + ' МБ';
+        }
+
+        async function renderStorageBox() {
+            if (!DOM.storageBox) return;
+
+            const docsBytes = state.archive.reduce((s, d) => s + docBytes(d), 0);
+            const photos    = state.archive.reduce((s, d) => s + docPhotoCount(d), 0);
+            const u = await Store.usage();
+
+            let bar = '';
+            if (u && u.quota) {
+                // estimate() у браузерів оновлюється із запізненням, тому беремо
+                // більше з двох чисел — так смужка не бреше відразу після запису.
+                const used = Math.max(u.usage || 0, docsBytes);
+                const pct = Math.min(100, Math.round(used / u.quota * 100));
+                const color = pct > 90 ? 'bg-red-500' : (pct > 70 ? 'bg-amber-500' : 'bg-emerald-500');
+                bar = `<div class="h-2 w-full bg-slate-200 rounded-full overflow-hidden mt-2">
+                           <div class="h-full ${color} rounded-full" style="width:${Math.max(2, pct)}%"></div>
+                       </div>
+                       <p class="text-[11px] text-slate-500 mt-1">Зайнято ${fmtSize(used)} з ${fmtSize(u.quota)}, які дозволяє браузер (${pct}%)</p>`;
+            }
+
+            const where = Store.mode() === 'idb'
+                ? '<span class="text-emerald-600">сховище браузера (велике)</span>'
+                : (Store.mode() === 'ls'
+                    ? '<span class="text-amber-600">резервне сховище, ~5 МБ</span>'
+                    : '<span class="text-red-600">збереження недоступне</span>');
+
+            DOM.storageBox.innerHTML = `
+                <div class="flex justify-between items-center gap-2">
+                    <span class="text-sm font-bold text-slate-700">💾 Пам'ять</span>
+                    <span class="text-[11px] text-right">${where}</span>
+                </div>
+                <p class="text-xs text-slate-600 mt-1">Документів: <b>${state.archive.length}</b> · фото: <b>${photos}</b> · важать <b>${fmtSize(docsBytes)}</b></p>
+                ${bar}`;
+        }
+
+        function openArchiveDoc(id) {
+            const doc = state.archive.find(a => a.id === id);
+            if (!doc) return;
+            state.docId = doc.id;
+            state.title = doc.title || '';
+            state.equipment = doc.equipment || '';
+            state.mainImage = doc.mainImage || null;
+            state.nodes = doc.nodes || [];
+            DOM.title.value = state.title;
+            DOM.eq.value = state.equipment;
+            saveLocal();
+            DOM.tabEd.click();
+        }
+
+        async function deleteArchiveDoc(id) {
+            const doc = state.archive.find(a => a.id === id);
+            if (!confirm('Видалити «' + ((doc && doc.title) || 'Без назви') + '» з архіву телефона?\n\nPDF і фото, вже завантажені на Google Диск, залишаться на місці.')) return;
+
+            const backup = state.archive;
+            state.archive = state.archive.filter(a => a.id !== id);
+            // Недописаний запис цього документа інакше воскресив би його
+            dirtyDocs.delete(id);
+
             try {
-                const saved = JSON.parse(localStorage.getItem('foodline_data'));
-                if(saved) {
-                    if(saved.archive) state.archive = saved.archive;
-                    if(saved.settings) state.settings = Object.assign({ email: '', driveId: '', photoDriveId: '1HVA32yxdk2jUMZwDmFeGGbbduelgy266', apiKey: '', aiModel: '', singlePage: true, logo: null }, saved.settings);
-                    if(saved.currentDoc) {
-                        state.docId = saved.currentDoc.id || crypto.randomUUID(); state.title = saved.currentDoc.title || ''; state.equipment = saved.currentDoc.equipment || ''; state.mainImage = saved.currentDoc.mainImage || null; state.nodes = saved.currentDoc.nodes || [];
-                    }
-                }
-            } catch(e){}
+                // Через ту саму чергу: видалення не має обігнати запис, який ще йде
+                const del = () => Store.remove(id, { allDocs: state.archive, settings: state.settings, currentDocId: state.docId });
+                saveQueue = saveQueue.then(del, del);
+                await saveQueue;
+            } catch (e) {
+                state.archive = backup;   // не вийшло — показуємо як було, без брехні
+                renderArchive();
+                return showToast('❌ Не вдалося видалити: ' + (e.message || e), true, 6000);
+            }
+
+            // видалили те, що відкрито в редакторі — починаємо чистий документ
+            if (id === state.docId) {
+                state.docId = crypto.randomUUID();
+                state.title = ''; state.equipment = ''; state.mainImage = null; state.nodes = [];
+                DOM.title.value = ''; DOM.eq.value = '';
+                saveLocal();
+            }
+
+            renderArchive();
+            showToast('🗑️ Документ видалено, місце звільнено');
         }
 
         function renderArchive() {
-            if (state.archive.length === 0) return DOM.archiveList.innerHTML = `<div class="text-center text-slate-400 py-8 card rounded-xl">Архів порожній</div>`;
-            DOM.archiveList.innerHTML = state.archive.map(ins => `
-                <div class="card p-4 rounded-xl cursor-pointer hover:border-emerald-400 archive-item transition-all hover:shadow-md" data-id="${ins.id}">
-                    <h3 class="font-bold text-lg text-slate-800">${ins.title || 'Без назви'}</h3>
-                    <p class="text-slate-500 text-sm mt-1">⚙️ ${ins.equipment || 'Не вказано'}</p>
-                    <div class="flex justify-between items-center mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
-                        <span class="bg-slate-100 px-2 py-1 rounded-md font-bold text-slate-500">Вузлів: ${ins.nodes?.length||0}</span>
-                        <span>${new Date(ins.date).toLocaleDateString()}</span>
+            renderStorageBox();
+
+            if (state.archive.length === 0) {
+                DOM.archiveList.innerHTML = `<div class="text-center text-slate-400 py-8 card rounded-xl">Архів порожній</div>`;
+                return;
+            }
+
+            const list = state.archive.slice().sort((a, b) => (b.updated || b.date || 0) - (a.updated || a.date || 0));
+
+            DOM.archiveList.innerHTML = list.map(ins => `
+                <div class="card p-4 rounded-xl hover:border-emerald-400 transition-all hover:shadow-md">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="archive-item cursor-pointer flex-1 min-w-0" data-id="${ins.id}">
+                            <h3 class="font-bold text-lg text-slate-800 truncate">${esc(ins.title) || 'Без назви'}</h3>
+                            <p class="text-slate-500 text-sm mt-1 truncate">⚙️ ${esc(ins.equipment) || 'Не вказано'}</p>
+                        </div>
+                        <button class="archive-del shrink-0 text-slate-400 hover:text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors" data-id="${ins.id}" title="Видалити з архіву">🗑️</button>
+                    </div>
+                    <div class="archive-item cursor-pointer flex flex-wrap justify-between items-center gap-1 mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400" data-id="${ins.id}">
+                        <span class="bg-slate-100 px-2 py-1 rounded-md font-bold text-slate-500 whitespace-nowrap">Вузлів: ${(ins.nodes || []).length}</span>
+                        <span class="bg-slate-100 px-2 py-1 rounded-md font-bold text-slate-500 whitespace-nowrap">📷 ${docPhotoCount(ins)} · ${fmtSize(docBytes(ins))}</span>
+                        <span class="whitespace-nowrap">${new Date(ins.updated || ins.date).toLocaleDateString()}</span>
                     </div>
                 </div>
             `).join('');
+
             document.querySelectorAll('.archive-item').forEach(el => el.onclick = (e) => {
-                const doc = state.archive.find(a => a.id === e.currentTarget.getAttribute('data-id'));
-                if(doc) { state.docId=doc.id; state.title=doc.title; state.equipment=doc.equipment; state.mainImage=doc.mainImage; state.nodes=doc.nodes||[]; saveLocal(); DOM.tabEd.click(); }
+                openArchiveDoc(e.currentTarget.getAttribute('data-id'));
+            });
+            document.querySelectorAll('.archive-del').forEach(el => el.onclick = (e) => {
+                e.stopPropagation();
+                deleteArchiveDoc(e.currentTarget.getAttribute('data-id'));
             });
         }
 
