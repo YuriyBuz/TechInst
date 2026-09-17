@@ -82,6 +82,28 @@
 
             <!-- ================= EDITOR TAB ================= -->
             <div id="view-editor" class="fade-in space-y-6">
+
+                <!-- Стан інструкції у спільній базі: видно одразу, без заходу в архів -->
+                <div id="cloud-bar" class="card p-3 rounded-2xl shadow-sm border-l-4 border-l-sky-500">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <div class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                                <span id="cloud-dot" class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
+                                ☁️ Спільна база
+                            </div>
+                            <div id="cloud-info" class="text-[11px] text-slate-500 mt-0.5">—</div>
+                        </div>
+                        <button id="cloud-save-btn" class="shrink-0 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow transition-colors whitespace-nowrap">⬆️ Записати</button>
+                    </div>
+                    <div id="cloud-conflict" class="hidden mt-3 pt-3 border-t border-slate-100">
+                        <p id="cloud-conflict-text" class="text-[11px] text-red-600 font-bold"></p>
+                        <div class="flex gap-2 mt-2">
+                            <button id="cloud-take-server" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 rounded-lg transition-colors">⬇️ Взяти з бази</button>
+                            <button id="cloud-force" class="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded-lg transition-colors">⬆️ Перезаписати</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card p-4 sm:p-6 rounded-2xl shadow-sm border-t-4 border-t-emerald-500">
                     <div class="relative w-full mb-3">
                         <input type="text" id="doc-title" placeholder="Назва інструкції..." class="w-full text-xl sm:text-2xl font-bold text-slate-800 placeholder-slate-300 bg-transparent border-b border-transparent focus:border-emerald-500 transition-colors py-1 outline-none pr-16">
@@ -170,8 +192,23 @@
                     <h2 class="text-xl font-bold text-slate-800">📂 Архів</h2>
                     <button id="btn-new-doc" class="text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100">➕ Створити</button>
                 </div>
-                <div id="storage-box" class="card p-4 rounded-2xl shadow-sm"></div>
-                <div id="archive-list" class="space-y-3"></div>
+                <div class="flex gap-1 bg-slate-200 p-1 rounded-xl">
+                    <button id="arch-tab-local" class="flex-1 py-2 rounded-lg bg-white text-emerald-700 font-bold shadow-sm text-xs sm:text-sm transition-all">📱 Цей телефон</button>
+                    <button id="arch-tab-cloud" class="flex-1 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-300 text-xs sm:text-sm transition-all">☁️ Спільна база</button>
+                </div>
+
+                <div id="arch-local-pane">
+                    <div id="storage-box" class="card p-4 rounded-2xl shadow-sm"></div>
+                    <div id="archive-list" class="space-y-3 mt-4"></div>
+                </div>
+
+                <div id="arch-cloud-pane" class="hidden">
+                    <div class="card p-3 rounded-2xl shadow-sm flex items-center justify-between gap-2">
+                        <p class="text-[11px] text-slate-500">Інструкції, доступні з будь-якого телефону.</p>
+                        <button id="cloud-refresh-btn" class="shrink-0 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl shadow transition-colors">🔄 Оновити</button>
+                    </div>
+                    <div id="cloud-list" class="space-y-3 mt-4"></div>
+                </div>
             </div>
 
             <!-- ================= SETTINGS TAB ================= -->
@@ -193,6 +230,30 @@
                             <label class="block text-xs font-bold text-slate-600 mb-1">Папка для фото (посилання в таблиці)</label>
                             <input type="text" id="set-photo-drive" class="input-field" placeholder="1A2b3C4d5E6f...">
                             <p class="text-[10px] text-slate-500 mt-1">Фото зберігаються у підпапку з назвою інструкції, а в таблицю потрапляє посилання на кожне.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">Папка для спільної бази (незавершені інструкції)</label>
+                            <input type="text" id="set-draft-drive" class="input-field" placeholder="порожньо — створиться сама">
+                            <p class="text-[10px] text-slate-500 mt-1">Якщо не вказати, скрипт сам зробить підпапку «Чернетки Food Line» у папці для фото.</p>
+                        </div>
+                        <div class="bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-3">
+                            <label class="flex items-start gap-3 cursor-pointer">
+                                <input type="checkbox" id="set-cloud-auto" class="mt-0.5 w-5 h-5 accent-sky-600 flex-shrink-0">
+                                <span>
+                                    <span class="block text-xs font-bold text-slate-700">Автозапис у спільну базу</span>
+                                    <span class="block text-[10px] text-slate-500 mt-0.5">Сама дописує інструкцію в базу, поки ви її створюєте. Нові фото вивантажуються один раз — повторно не качаються.</span>
+                                </span>
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs font-bold text-slate-600 shrink-0">Кожні</label>
+                                <input type="number" id="set-cloud-sec" min="30" step="30" class="input-field w-24 py-1.5" placeholder="120">
+                                <span class="text-xs text-slate-600">секунд</span>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">Назва цього телефона (видно в базі, хто правив)</label>
+                                <input type="text" id="set-device" class="input-field py-1.5" placeholder="Телефон Юрія">
+                                <p class="text-[10px] text-slate-500 mt-1">Зберігається лише на цьому пристрої і в таблицю налаштувань не йде.</p>
+                            </div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                             <label class="flex items-start gap-3 cursor-pointer">
@@ -336,6 +397,12 @@
         // ============================================================
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGEs390Faz9H9HFIlB5VH1ZhjQMPMgYweka_sBsbTR5ECPe05qa1jU4_LFw-f17pHWbQ/exec';
         const FETCH_TIMEOUT_MS = 180000; // 3 хвилини на великі PDF
+
+        // Пароль додатку. Поки порожньо — перевірки немає (як було).
+        // Якщо заповните ACCESS_TOKEN у Code.gs — впишіть тут ТЕ САМЕ значення.
+        // Це лише бар'єр від випадкових запитів: цей файл лежить публічно,
+        // тому справжнє обмеження — розгортання «Тільки для мене».
+        const APP_TOKEN = '';
         // Логотип лежить поруч з index.html у тому ж репозиторії GitHub.
         // Свій домен = немає CORS, тому canvas завжди зможе перевести його в base64 для PDF.
         const LOCAL_LOGO_URL = 'Logo_FLP.jpg';
@@ -472,7 +539,8 @@
                     mainImage: d.mainImage || null,
                     nodes:     Array.isArray(d.nodes) ? d.nodes : [],
                     date:      created,                    // коли створено
-                    updated:   d.updated || created        // коли останній раз правили
+                    updated:   d.updated || created,       // коли останній раз правили
+                    cloud:     d.cloud || null             // версія у спільній базі + ID вивантажених фото
                 };
             }
 
@@ -699,10 +767,24 @@
             };
         })();
 
+        // Порожній стан документа у спільній базі
+        function emptyCloudState() {
+            return { rev: 0, photos: {}, sig: '', savedAt: 0, device: '', folderUrl: '' };
+        }
+
+        const SETTINGS_DEFAULTS = {
+            email: 'Buznitskiy7@gmail.com', driveId: '',
+            photoDriveId: '1HVA32yxdk2jUMZwDmFeGGbbduelgy266', draftDriveId: '',
+            apiKey: '', aiModel: '', singlePage: true, logo: null,
+            cloudAutoSave: true, cloudAutoSaveSec: 120,
+            deviceName: ''   // лише на цьому пристрої, у таблицю не йде
+        };
+
         let state = {
             docId: crypto.randomUUID(), title: '', equipment: '', mainImage: null,
             nodes: [], archive: [],
-            settings: { email: 'Buznitskiy7@gmail.com', driveId: '', photoDriveId: '1HVA32yxdk2jUMZwDmFeGGbbduelgy266', apiKey: '', aiModel: '', singlePage: true, logo: null }
+            cloud: emptyCloudState(),
+            settings: Object.assign({}, SETTINGS_DEFAULTS)
         };
 
         let tempNodeImage = null; let activeNodeIdForStep = null;
@@ -727,6 +809,14 @@
                 saveBtn: document.getElementById('save-sheets-btn'), emailBtn: document.getElementById('email-btn'), pdfBtn: document.getElementById('pdf-btn'),
                 archiveList: document.getElementById('archive-list'), btnNewDoc: document.getElementById('btn-new-doc'),
                 storageBox: document.getElementById('storage-box'),
+                cloudDot: document.getElementById('cloud-dot'), cloudInfo: document.getElementById('cloud-info'), cloudSaveBtn: document.getElementById('cloud-save-btn'),
+                cloudConflict: document.getElementById('cloud-conflict'), cloudConflictText: document.getElementById('cloud-conflict-text'),
+                cloudTakeServer: document.getElementById('cloud-take-server'), cloudForce: document.getElementById('cloud-force'),
+                archTabLocal: document.getElementById('arch-tab-local'), archTabCloud: document.getElementById('arch-tab-cloud'),
+                archLocalPane: document.getElementById('arch-local-pane'), archCloudPane: document.getElementById('arch-cloud-pane'),
+                cloudList: document.getElementById('cloud-list'), cloudRefreshBtn: document.getElementById('cloud-refresh-btn'),
+                setDraftDrive: document.getElementById('set-draft-drive'), setCloudAuto: document.getElementById('set-cloud-auto'),
+                setCloudSec: document.getElementById('set-cloud-sec'), setDevice: document.getElementById('set-device'),
                 saveStatusBox: document.getElementById('save-status-box'), statusDot: document.getElementById('statusDot'), statusText: document.getElementById('statusText'),
                 imgEditorModal: document.getElementById('img-editor-modal')
             };
@@ -749,6 +839,8 @@
                 setupButtons();
                 setupModalButtons();
                 setupNodeButton();
+                setupCloudButtons();
+                setupArchiveTabs();
 
                 // Набір тексту — із затримкою. Раніше кожна натиснута літера
                 // переписувала у сховище весь архів разом з фото, і на телефоні
@@ -764,6 +856,10 @@
 
                 renderNodes();
                 setSaveStatus('saved');
+                startCloudAutoSave();
+
+                // «5 хв тому» має лишатися правдою, поки людина працює
+                setInterval(() => { if (!cloudBusy) renderCloudBar(); }, 30000);
 
                 if (store.migrated) {
                     showToast('✅ Архів (' + store.migrated + ' док.) перенесено у велике сховище браузера', false, 6000);
@@ -822,7 +918,7 @@
             };
 
             DOM.tabEd.onclick = () => { hideAll(); DOM.viewEd.classList.remove('hidden'); DOM.tabEd.className = actCls; document.getElementById('footer-bar').classList.remove('translate-y-[150%]'); renderNodes(); };
-            DOM.tabAr.onclick = () => { hideAll(); DOM.viewAr.classList.remove('hidden'); DOM.tabAr.className = actCls; renderArchive(); };
+            DOM.tabAr.onclick = () => { hideAll(); DOM.viewAr.classList.remove('hidden'); DOM.tabAr.className = actCls; renderArchiveView(); };
 
             DOM.tabSet.onclick = () => {
                 const pass = prompt("Введіть пароль доступу до налаштувань:");
@@ -1337,6 +1433,7 @@
 
         function renderNodes() {
             DOM.title.value = state.title; DOM.eq.value = state.equipment;
+            renderCloudBar();
             if(state.mainImage) { DOM.mainImgPrev.src = state.mainImage; DOM.mainImgBox.classList.remove('hidden'); } else { DOM.mainImgBox.classList.add('hidden'); }
 
             DOM.nodesCont.innerHTML = state.nodes.map((node) => `
@@ -1395,6 +1492,10 @@
             DOM.setPhotoDrive.value   = state.settings.photoDriveId || '';
             DOM.setSinglePage.checked = state.settings.singlePage !== false;
             DOM.setApi.value          = state.settings.apiKey || '';
+            if (DOM.setDraftDrive) DOM.setDraftDrive.value = state.settings.draftDriveId || '';
+            if (DOM.setCloudAuto)  DOM.setCloudAuto.checked = state.settings.cloudAutoSave !== false;
+            if (DOM.setCloudSec)   DOM.setCloudSec.value = Math.max(30, Number(state.settings.cloudAutoSaveSec) || 120);
+            if (DOM.setDevice)     DOM.setDevice.value = state.settings.deviceName || '';
         }
 
         // Тягне налаштування з вкладки «Налаштування» Google-таблиці.
@@ -1404,7 +1505,7 @@
             try {
                 const res = await postToScript({ action: 'get_settings' });
                 const s = res.settings || {};
-                ['email', 'driveId', 'photoDriveId', 'apiKey', 'aiModel'].forEach(k => {
+                ['email', 'driveId', 'photoDriveId', 'draftDriveId', 'apiKey', 'aiModel'].forEach(k => {
                     if (s[k] !== undefined && String(s[k]).trim() !== '') {
                         state.settings[k] = String(s[k]).trim();
                     }
@@ -1413,7 +1514,16 @@
                     state.settings.singlePage = (s.singlePage === true) ||
                         /^(true|1|так|yes)$/i.test(String(s.singlePage).trim());
                 }
+                if (s.cloudAutoSave !== undefined) {
+                    state.settings.cloudAutoSave = (s.cloudAutoSave === true) ||
+                        /^(true|1|так|yes)$/i.test(String(s.cloudAutoSave).trim());
+                }
+                if (s.cloudAutoSaveSec !== undefined && String(s.cloudAutoSaveSec).trim() !== '') {
+                    state.settings.cloudAutoSaveSec = Math.max(30, Number(s.cloudAutoSaveSec) || 120);
+                }
+                // deviceName свідомо НЕ синхронізуємо: він у кожного телефона свій
                 fillSettingsFields();
+                startCloudAutoSave();
                 saveLocal();
             } catch (e) {
                 console.log("Налаштування з таблиці не завантажились: " + e.message);
@@ -1427,6 +1537,11 @@
                 state.settings.driveId = DOM.setDrive.value.trim();
                 state.settings.photoDriveId = DOM.setPhotoDrive.value.trim();
                 state.settings.singlePage = DOM.setSinglePage.checked;
+                state.settings.draftDriveId = DOM.setDraftDrive ? DOM.setDraftDrive.value.trim() : '';
+                state.settings.cloudAutoSave = DOM.setCloudAuto ? DOM.setCloudAuto.checked : true;
+                state.settings.cloudAutoSaveSec = Math.max(30, Number(DOM.setCloudSec && DOM.setCloudSec.value) || 120);
+                // Назва пристрою — лише тут, у спільну таблицю не йде
+                state.settings.deviceName = (DOM.setDevice ? DOM.setDevice.value.trim() : '') || state.settings.deviceName;
                 const newKey = DOM.setApi.value.trim();
                 // ключ змінився -> забуваємо запам'ятану модель, підберемо наново
                 if (newKey !== state.settings.apiKey) state.settings.aiModel = '';
@@ -1445,6 +1560,9 @@
                             driveId:      state.settings.driveId,
                             photoDriveId: state.settings.photoDriveId,
                             singlePage:   state.settings.singlePage,
+                            draftDriveId: state.settings.draftDriveId,
+                            cloudAutoSave: state.settings.cloudAutoSave,
+                            cloudAutoSaveSec: state.settings.cloudAutoSaveSec,
                             apiKey:       state.settings.apiKey,
                             aiModel:      state.settings.aiModel || ''
                         }
@@ -1453,6 +1571,7 @@
                 } catch (e) {
                     showToast("Збережено лише на цьому пристрої: " + e.message, true, 5000);
                 } finally {
+                    startCloudAutoSave();   // інтервал автозапису міг змінитись
                     DOM.saveSetBtn.disabled = false;
                     DOM.saveSetBtn.textContent = oldLabel;
                 }
@@ -1764,7 +1883,7 @@
                     method: 'POST',
                     // text/plain — свідомо: JSON-заголовок ламає CORS для Apps Script
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify(APP_TOKEN ? Object.assign({ token: APP_TOKEN }, payload) : payload),
                     signal: controller.signal
                 });
             } catch (netErr) {
@@ -1817,6 +1936,11 @@
         // Плоский список усіх фото документа з готовими іменами файлів.
         // key прив'язує фото до конкретного рядка майбутньої таблиці.
         function collectPhotos() {
+            const cloudIds = (state.cloud && state.cloud.photos) || {};
+            // Фото, яке вже лежить на Диску як чернетка, сервер скопіює сам —
+            // не треба качати ті самі мегабайти з телефона вдруге.
+            const alreadyOnDrive = (dataUrl) => cloudIds[photoFingerprint(dataUrl)] || null;
+
             const list = [];
             state.nodes.forEach((node, ni) => {
                 const nodeName = cleanNamePart(node.title);
@@ -1824,7 +1948,8 @@
                     list.push({
                         key: 'n' + ni,
                         name: (ni + 1) + '.0 ' + nodeName + ' - загальне фото.jpg',
-                        dataUrl: node.image
+                        dataUrl: node.image,
+                        copyFileId: alreadyOnDrive(node.image)
                     });
                 }
                 (node.steps || []).forEach((step, si) => {
@@ -1833,7 +1958,8 @@
                             key: 'n' + ni + 's' + si + 'i' + ii,
                             name: (ni + 1) + '.' + (si + 1) + ' ' + nodeName + ' - крок ' + (si + 1) +
                                   ((step.images.length > 1) ? ' (' + (ii + 1) + ')' : '') + '.jpg',
-                            dataUrl: img
+                            dataUrl: img,
+                            copyFileId: alreadyOnDrive(img)
                         });
                     });
                 });
@@ -1858,7 +1984,10 @@
                     date: new Date().toLocaleString('uk-UA'),
                     photoDriveId: state.settings.photoDriveId,
                     photoFolderId: photoFolderId,   // з другої пачки — вже готова підпапка
-                    photos: batch
+                    // Копію з Диску просимо одним ID замість цілого файла
+                    photos: batch.map(ph => ph.copyFileId
+                        ? { key: ph.key, name: ph.name, copyFileId: ph.copyFileId }
+                        : { key: ph.key, name: ph.name, dataUrl: ph.dataUrl })
                 });
 
                 photoFolderId = result.photoFolderId || photoFolderId;
@@ -1904,6 +2033,8 @@
         function setupButtons() {
             if(DOM.btnNewDoc) DOM.btnNewDoc.onclick = () => {
                 state.docId = crypto.randomUUID(); state.title = ''; state.equipment = ''; state.mainImage = null; state.nodes = [];
+                state.cloud = emptyCloudState();          // нова інструкція — своя запис у базі
+                cloudConflict = null; cloudLastError = '';
                 DOM.title.value = ''; DOM.eq.value = '';
                 saveLocal(); DOM.tabEd.click();
             };
@@ -2028,6 +2159,7 @@
                         title: state.title,
                         equipment: state.equipment,
                         date: new Date().toLocaleString('uk-UA'),
+                        draftId: state.docId,        // щоб у базі з'явилась позначка «PDF готовий»
                         driveId: state.settings.driveId,
                         photoFolderId: photoFolderId,
                         filename: pdf.filename,
@@ -2044,6 +2176,479 @@
                     restoreButton(DOM.saveBtn);
                 }
             };
+        }
+
+        // ================= СПІЛЬНА БАЗА (чернетки на Google Диску) =================
+        // Одна інструкція = одна папка на Диску: draft.json з текстом і ID фото
+        // плюс самі фото файлами. Покажчик — вкладка «Чернетки» в таблиці.
+        //
+        // Фото — найважче в інструкції, тому кожне вивантажується РІВНО ОДИН РАЗ.
+        // Впізнаємо вже вивантажене за відпечатком самих байтів: те саме фото,
+        // завантажене на інший телефон, дає той самий відпечаток — бо це ті
+        // самі байти. Завдяки цьому автозапис кожні дві хвилини не жує
+        // мобільний інтернет, а фінальне «Зберегти» копіює фото вже на сервері.
+        const CLOUD_PHOTOS_PER_REQUEST = 3;
+
+        let cloudBusy = false;
+        let cloudConflict = null;    // { serverRev, serverDevice, serverUpdated }
+        let cloudLastError = '';
+        let cloudTimer = null;
+        let cloudListCache = null;
+
+        // Відпечаток байтів фото. Не хеш — просто довжина плюс краї base64;
+        // для наших задач («це те саме фото?») цього досить і рахується мгновенно.
+        function photoFingerprint(dataUrl) {
+            const s = String(dataUrl || '');
+            if (!s) return '';
+            const i = s.indexOf(',');
+            const b = (i > -1) ? s.slice(i + 1) : s;
+            return b.length + ':' + b.slice(0, 48) + ':' + b.slice(-48);
+        }
+
+        function deviceName() {
+            return (state.settings.deviceName || '').trim() || 'Телефон';
+        }
+
+        function docHasContent() {
+            return !!(state.title || state.equipment || state.nodes.length || state.mainImage);
+        }
+
+        // Усі фото документа з відпечатками і осмисленими іменами файлів
+        function cloudPhotoList() {
+            const out = [];
+            const add = (dataUrl, name) => {
+                if (!dataUrl) return;
+                out.push({ fp: photoFingerprint(dataUrl), dataUrl: dataUrl, name: name });
+            };
+
+            add(state.mainImage, '0.0 загальне фото обладнання.jpg');
+            state.nodes.forEach((node, ni) => {
+                const nm = cleanNamePart(node.title);
+                add(node.image, (ni + 1) + '.0 ' + nm + '.jpg');
+                (node.steps || []).forEach((step, si) => {
+                    (step.images || []).forEach((img, ii) => {
+                        add(img, (ni + 1) + '.' + (si + 1) + ' ' + nm + ' крок ' + (si + 1) +
+                                 (ii ? ' (' + (ii + 1) + ')' : '') + '.jpg');
+                    });
+                });
+            });
+            return out;
+        }
+
+        // Текст інструкції + ID фото на Диску. Саме це лягає в draft.json.
+        function buildDraftPayload() {
+            const map = state.cloud.photos || {};
+            const idOf = (dataUrl) => (dataUrl ? (map[photoFingerprint(dataUrl)] || null) : null);
+
+            return {
+                id: state.docId,
+                title: state.title || '',
+                equipment: state.equipment || '',
+                mainPhoto: idOf(state.mainImage),
+                nodes: state.nodes.map(node => ({
+                    title: node.title || '',
+                    desc: node.desc || '',
+                    photo: idOf(node.image),
+                    steps: (node.steps || []).map(step => ({
+                        text: step.text || '',
+                        photos: (step.images || []).map(idOf).filter(Boolean)
+                    }))
+                })),
+                rev: state.cloud.rev || 0,
+                device: deviceName()
+            };
+        }
+
+        // Підпис вмісту: якщо він не змінився з моменту запису — писати нічого.
+        // Так автозапис не робить зайвих запитів, поки людина просто читає.
+        function cloudSignature() {
+            const parts = [state.title || '', state.equipment || '', photoFingerprint(state.mainImage)];
+            state.nodes.forEach(node => {
+                parts.push(node.title || '', node.desc || '', photoFingerprint(node.image));
+                (node.steps || []).forEach(step => {
+                    parts.push(step.text || '');
+                    (step.images || []).forEach(img => parts.push(photoFingerprint(img)));
+                });
+            });
+            return parts.join('|');
+        }
+
+        function cloudHasChanges() {
+            if (!docHasContent()) return false;
+            return cloudSignature() !== (state.cloud.sig || '');
+        }
+
+        function fmtAgo(ts) {
+            if (!ts) return 'ніколи';
+            const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+            if (s < 60) return 'щойно';
+            if (s < 3600) return Math.round(s / 60) + ' хв тому';
+            if (s < 86400) return Math.round(s / 3600) + ' год тому';
+            return new Date(ts).toLocaleDateString();
+        }
+
+        // Вивантажуємо лише ті фото, яких у базі ще немає.
+        async function cloudUploadMissing(onStatus) {
+            if (!state.cloud.photos) state.cloud.photos = {};
+            const map = state.cloud.photos;
+
+            const seen = {};
+            const missing = [];
+            cloudPhotoList().forEach(ph => {
+                if (map[ph.fp] || seen[ph.fp]) return;   // уже в базі або дубль у цьому ж документі
+                seen[ph.fp] = true;
+                missing.push(ph);
+            });
+
+            for (let i = 0; i < missing.length; i += CLOUD_PHOTOS_PER_REQUEST) {
+                const batch = missing.slice(i, i + CLOUD_PHOTOS_PER_REQUEST);
+                if (onStatus) onStatus('Вивантажую фото ' + Math.min(i + batch.length, missing.length) + ' з ' + missing.length + '…');
+
+                const res = await postToScript({
+                    action: 'draft_upload_photos',
+                    draftId: state.docId,
+                    title: state.title || 'Інструкція',
+                    draftDriveId: state.settings.draftDriveId,
+                    photoDriveId: state.settings.photoDriveId,
+                    driveId: state.settings.driveId,
+                    photos: batch.map(ph => ({ key: ph.fp, name: ph.name, dataUrl: ph.dataUrl }))
+                });
+
+                Object.assign(map, res.ids || {});
+            }
+
+            return missing.length;
+        }
+
+        // opts: { manual } — руками з кнопки, { force } — перезаписати чужу версію
+        async function cloudSave(opts) {
+            const o = opts || {};
+            if (cloudBusy) return;
+
+            if (!docHasContent()) {
+                if (o.manual) showToast('Спочатку напишіть назву або додайте вузол', true);
+                return;
+            }
+
+            cloudBusy = true;
+            if (o.manual) cloudLastError = '';
+            renderCloudBar('Зберігаю…');
+
+            try {
+                const uploaded = await cloudUploadMissing(txt => renderCloudBar(txt));
+                renderCloudBar('Записую інструкцію…');
+
+                const res = await postToScript({
+                    action: 'draft_save',
+                    draft: buildDraftPayload(),
+                    force: !!o.force,
+                    draftDriveId: state.settings.draftDriveId,
+                    photoDriveId: state.settings.photoDriveId,
+                    driveId: state.settings.driveId
+                });
+
+                // ID нових фото зберігаємо навіть при конфлікті — вони вже на Диску
+                saveLocal();
+
+                if (res.conflict) {
+                    cloudConflict = res;
+                    if (o.manual) showToast('⚠️ ' + (res.message || 'Конфлікт версій'), true, 8000);
+                    return;
+                }
+
+                cloudConflict = null;
+                cloudLastError = '';
+                state.cloud.rev = res.rev || 0;
+                state.cloud.savedAt = res.updated || Date.now();
+                state.cloud.sig = cloudSignature();
+                state.cloud.device = deviceName();
+                state.cloud.folderUrl = res.folderUrl || state.cloud.folderUrl || '';
+                cloudListCache = null;
+                saveLocal();
+
+                if (o.manual) {
+                    showToast('☁️ Записано у спільну базу' + (uploaded ? (' (+' + uploaded + ' фото)') : ''), false, 4000);
+                }
+            } catch (e) {
+                console.error('CLOUD SAVE ERROR:', e);
+                cloudLastError = e.message || String(e);
+                // Автозапис не сипле тостами — про збій видно в рядку стану
+                if (o.manual) showToast('❌ ' + cloudLastError, true, 8000);
+            } finally {
+                cloudBusy = false;
+                renderCloudBar();
+            }
+        }
+
+        // Завантаження інструкції з бази в цей телефон (у т.ч. на іншому пристрої)
+        async function cloudOpen(id, onStatus) {
+            const res = await postToScript({ action: 'draft_load', id: id });
+            const d = res.draft || {};
+
+            const ids = [];
+            const push = v => { if (v && ids.indexOf(v) < 0) ids.push(v); };
+            push(d.mainPhoto);
+            (d.nodes || []).forEach(n => {
+                push(n.photo);
+                (n.steps || []).forEach(s => (s.photos || []).forEach(push));
+            });
+
+            // Фото качаємо пачками: сервер обмежений розміром однієї відповіді
+            const byId = {};
+            let left = ids.slice();
+            let guard = 0;
+            while (left.length && guard++ < 500) {
+                if (onStatus) onStatus('Завантажую фото ' + (ids.length - left.length + 1) + ' з ' + ids.length + '…');
+
+                const r = await postToScript({ action: 'draft_photos', ids: left.slice(0, CLOUD_PHOTOS_PER_REQUEST) });
+                const served = r.served || Object.keys(r.photos || {});
+                if (!served.length) break;   // сервер нічого не віддав — не крутимось вічно
+
+                served.forEach(fid => { byId[fid] = (r.photos || {})[fid] || null; });
+                left = left.filter(fid => !(fid in byId));
+            }
+
+            let lost = 0;
+            const pick = fid => {
+                if (!fid) return null;
+                const v = byId[fid];
+                if (!v) { lost++; return null; }
+                return v;
+            };
+
+            state.docId = d.id || id;
+            state.title = d.title || '';
+            state.equipment = d.equipment || '';
+            state.mainImage = pick(d.mainPhoto);
+            state.nodes = (d.nodes || []).map(n => ({
+                id: crypto.randomUUID(),
+                title: n.title || '',
+                desc: n.desc || '',
+                image: pick(n.photo),
+                steps: (n.steps || []).map(s => ({
+                    id: crypto.randomUUID(),
+                    text: s.text || '',
+                    images: (s.photos || []).map(pick).filter(Boolean)
+                }))
+            }));
+
+            // Відпечатки завантажених фото — щоб наступний запис не качав їх назад
+            const photos = {};
+            Object.keys(byId).forEach(fid => {
+                if (byId[fid]) photos[photoFingerprint(byId[fid])] = fid;
+            });
+
+            state.cloud = {
+                rev: res.rev || d.rev || 0,
+                photos: photos,
+                sig: '',
+                savedAt: res.updated || d.updated || 0,
+                device: res.device || d.device || '',
+                folderUrl: ''
+            };
+            state.cloud.sig = cloudSignature();   // щойно завантажили — змін немає
+            cloudConflict = null;
+            cloudLastError = '';
+
+            DOM.title.value = state.title;
+            DOM.eq.value = state.equipment;
+            saveLocal();
+
+            return { lost: lost, total: ids.length };
+        }
+
+        function renderCloudBar(busyText) {
+            if (!DOM.cloudInfo) return;
+
+            if (cloudConflict) {
+                DOM.cloudConflict.classList.remove('hidden');
+                DOM.cloudConflictText.textContent =
+                    'Цю інструкцію вже змінили з пристрою «' + (cloudConflict.serverDevice || 'невідомо') +
+                    '» (' + fmtAgo(cloudConflict.serverUpdated) + '). Виберіть, що робити.';
+            } else {
+                DOM.cloudConflict.classList.add('hidden');
+            }
+
+            let dot, info;
+            if (busyText)                  { dot = 'bg-sky-500 animate-pulse'; info = busyText; }
+            else if (cloudConflict)        { dot = 'bg-red-500 animate-pulse'; info = 'Конфлікт версій — база новіша'; }
+            else if (cloudLastError)       { dot = 'bg-red-500';               info = 'Не записалось: ' + cloudLastError; }
+            else if (!docHasContent())     { dot = 'bg-slate-300';             info = 'Порожня інструкція'; }
+            else if (!state.cloud.savedAt) { dot = 'bg-slate-300';             info = 'Ще не записана в базу'; }
+            else if (cloudHasChanges())    { dot = 'bg-amber-400';             info = 'Є незаписані зміни · у базі ' + fmtAgo(state.cloud.savedAt); }
+            else                           { dot = 'bg-emerald-500';           info = 'У базі, версія ' + state.cloud.rev + ' · ' + fmtAgo(state.cloud.savedAt); }
+
+            DOM.cloudDot.className = 'w-2 h-2 rounded-full shrink-0 ' + dot;
+            DOM.cloudInfo.textContent = info;
+
+            DOM.cloudSaveBtn.disabled = !!busyText;
+            DOM.cloudSaveBtn.className = 'shrink-0 text-white text-xs font-bold px-3 py-2 rounded-xl shadow transition-colors whitespace-nowrap ' +
+                (busyText ? 'bg-slate-400' : 'bg-sky-600 hover:bg-sky-700');
+        }
+
+        function startCloudAutoSave() {
+            clearInterval(cloudTimer);
+            cloudTimer = null;
+            if (!state.settings.cloudAutoSave) return;
+
+            const sec = Math.max(30, Number(state.settings.cloudAutoSaveSec) || 120);
+            cloudTimer = setInterval(() => {
+                if (cloudBusy || cloudConflict) return;
+                if (navigator.onLine === false) return;   // без інтернету не смикаємо сервер
+                if (!cloudHasChanges()) return;
+                cloudSave({ manual: false });
+            }, sec * 1000);
+        }
+
+        function setupCloudButtons() {
+            if (DOM.cloudSaveBtn) DOM.cloudSaveBtn.onclick = () => cloudSave({ manual: true });
+
+            if (DOM.cloudForce) DOM.cloudForce.onclick = () => {
+                if (!confirm('Перезаписати версію з бази своєю? Зміни, зроблені на іншому телефоні, буде втрачено.')) return;
+                cloudSave({ manual: true, force: true });
+            };
+
+            if (DOM.cloudTakeServer) DOM.cloudTakeServer.onclick = async () => {
+                if (!confirm('Взяти версію з бази? Ваші незаписані зміни в цій інструкції буде втрачено.')) return;
+                const id = state.docId;
+                showGenOverlay('Завантажую з бази…');
+                try {
+                    const r = await cloudOpen(id, txt => showGenOverlay(txt));
+                    renderNodes();
+                    renderCloudBar();
+                    showToast(r.lost ? ('⚠️ Завантажено, але ' + r.lost + ' фото не знайшлось') : '✅ Узято версію з бази', !!r.lost, 6000);
+                } catch (e) {
+                    showToast('❌ ' + e.message, true, 8000);
+                } finally {
+                    hideGenOverlay();
+                }
+            };
+
+            if (DOM.cloudRefreshBtn) DOM.cloudRefreshBtn.onclick = () => renderCloudList(true);
+        }
+
+        // ---------- Список спільної бази у вкладці «Архів» ----------
+        async function renderCloudList(force) {
+            if (!DOM.cloudList) return;
+
+            let drafts = (!force && cloudListCache) ? cloudListCache : null;
+
+            if (!drafts) {
+                DOM.cloudList.innerHTML = `<div class="text-center text-slate-400 py-8 card rounded-xl">Читаю спільну базу…</div>`;
+                try {
+                    const res = await postToScript({ action: 'draft_list' });
+                    drafts = res.drafts || [];
+                    cloudListCache = drafts;
+                } catch (e) {
+                    DOM.cloudList.innerHTML = `
+                        <div class="card rounded-xl p-4 text-center">
+                            <p class="text-red-600 font-bold text-sm">Не вдалося прочитати базу</p>
+                            <p class="text-xs text-slate-500 mt-1">${esc(e.message)}</p>
+                        </div>`;
+                    return;
+                }
+            }
+
+            if (!drafts.length) {
+                DOM.cloudList.innerHTML = `<div class="text-center text-slate-400 py-8 card rounded-xl">У спільній базі поки нічого немає</div>`;
+                return;
+            }
+
+            DOM.cloudList.innerHTML = drafts.map(d => `
+                <div class="card p-4 rounded-xl ${d.id === state.docId ? 'border-l-4 border-l-sky-500' : ''}">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="font-bold text-lg text-slate-800 truncate">${esc(d.title) || 'Без назви'}</h3>
+                            <p class="text-slate-500 text-sm mt-1 truncate">⚙️ ${esc(d.equipment) || 'Не вказано'}</p>
+                        </div>
+                        ${d.done ? '<span class="shrink-0 text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-1 rounded-md">PDF готовий</span>' : ''}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1 mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
+                        <span class="bg-slate-100 px-2 py-1 rounded-md font-bold text-slate-500 whitespace-nowrap">Вузлів: ${d.nodes || 0}</span>
+                        <span class="bg-slate-100 px-2 py-1 rounded-md font-bold text-slate-500 whitespace-nowrap">📷 ${d.photos || 0}</span>
+                        <span class="whitespace-nowrap">${esc(d.device) || '—'} · ${fmtAgo(d.updated)}</span>
+                    </div>
+                    <div class="flex gap-2 mt-3">
+                        <button class="cloud-open flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg transition-colors" data-id="${esc(d.id)}">
+                            ${d.id === state.docId ? '⬇️ Перезавантажити з бази' : '⬇️ Відкрити на цьому телефоні'}
+                        </button>
+                        <button class="cloud-del shrink-0 text-slate-400 hover:text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition-colors" data-id="${esc(d.id)}" title="Видалити зі спільної бази">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+
+            DOM.cloudList.querySelectorAll('.cloud-open').forEach(el => el.onclick = async (e) => {
+                const btn = e.currentTarget;
+                const id = btn.getAttribute('data-id');
+
+                if (cloudHasChanges() && id !== state.docId &&
+                    !confirm('У відкритій інструкції є зміни, ще не записані в базу. Вони залишаться в архіві цього телефона. Продовжити?')) return;
+
+                const label = btn.textContent;
+                btn.disabled = true;
+                showGenOverlay('Завантажую з бази…');
+                try {
+                    const r = await cloudOpen(id, txt => { btn.textContent = txt; showGenOverlay(txt); });
+                    showToast(r.lost ? ('⚠️ Завантажено, але ' + r.lost + ' з ' + r.total + ' фото не знайшлось на Диску')
+                                     : '✅ Інструкцію завантажено на цей телефон', !!r.lost, 6000);
+                    DOM.tabEd.click();
+                } catch (err) {
+                    showToast('❌ ' + err.message, true, 8000);
+                } finally {
+                    hideGenOverlay();
+                    btn.disabled = false;
+                    btn.textContent = label;
+                }
+            });
+
+            DOM.cloudList.querySelectorAll('.cloud-del').forEach(el => el.onclick = async (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
+                const d = (cloudListCache || []).find(x => x.id === id);
+                if (!confirm('Видалити «' + ((d && d.title) || 'Без назви') + '» зі спільної бази?\n\nПапка з фото переїде в кошик Google Диску — звідти її можна відновити. Копія в архіві цього телефона залишиться.')) return;
+
+                e.currentTarget.disabled = true;
+                try {
+                    const res = await postToScript({ action: 'draft_delete', id: id });
+                    cloudListCache = null;
+
+                    if (id === state.docId) {
+                        state.cloud = emptyCloudState();
+                        cloudConflict = null;
+                        saveLocal();
+                        renderCloudBar();
+                    }
+                    showToast('🗑️ ' + (res.message || 'Видалено з бази'), false, 5000);
+                    renderCloudList(true);
+                } catch (err) {
+                    showToast('❌ ' + err.message, true, 8000);
+                    e.currentTarget.disabled = false;
+                }
+            });
+        }
+
+        function setupArchiveTabs() {
+            const act = 'flex-1 py-2 rounded-lg bg-white text-emerald-700 font-bold shadow-sm text-xs sm:text-sm transition-all';
+            const inact = 'flex-1 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-300 text-xs sm:text-sm transition-all';
+
+            if (DOM.archTabLocal) DOM.archTabLocal.onclick = () => {
+                DOM.archTabLocal.className = act; DOM.archTabCloud.className = inact;
+                DOM.archLocalPane.classList.remove('hidden');
+                DOM.archCloudPane.classList.add('hidden');
+                renderArchive();
+            };
+
+            if (DOM.archTabCloud) DOM.archTabCloud.onclick = () => {
+                DOM.archTabCloud.className = act; DOM.archTabLocal.className = inact;
+                DOM.archCloudPane.classList.remove('hidden');
+                DOM.archLocalPane.classList.add('hidden');
+                renderCloudList(false);
+            };
+        }
+
+        // Малює ту половину архіву, яка зараз відкрита
+        function renderArchiveView() {
+            if (DOM.archCloudPane && !DOM.archCloudPane.classList.contains('hidden')) renderCloudList(false);
+            else renderArchive();
         }
 
         // ================= ЗБЕРЕЖЕННЯ НА ПРИСТРОЇ =================
@@ -2067,6 +2672,7 @@
                 equipment: state.equipment,
                 mainImage: state.mainImage,
                 nodes: state.nodes,
+                cloud: state.cloud,
                 date: (prev && prev.date) || Date.now(),   // дату створення не затираємо
                 updated: Date.now()
             };
@@ -2165,28 +2771,35 @@
         async function loadData() {
             const data = await Store.load();
 
-            const defaults = { email: 'Buznitskiy7@gmail.com', driveId: '', photoDriveId: '1HVA32yxdk2jUMZwDmFeGGbbduelgy266', apiKey: '', aiModel: '', singlePage: true, logo: null };
-            state.settings = Object.assign(defaults, data.settings || {});
+            state.settings = Object.assign({}, SETTINGS_DEFAULTS, data.settings || {});
             state.archive = data.docs || [];
+
+            // Ім'я пристрою потрібне, щоб у спільній базі було видно, хто правив
+            if (!String(state.settings.deviceName || '').trim()) {
+                state.settings.deviceName = 'Телефон-' + String(Math.floor(1000 + Math.random() * 9000));
+            }
 
             const cur = state.archive.find(d => d.id === data.currentDocId);
             if (cur) {
-                state.docId = cur.id;
-                state.title = cur.title || '';
-                state.equipment = cur.equipment || '';
-                state.mainImage = cur.mainImage || null;
-                state.nodes = cur.nodes || [];
+                openDocFromRecord(cur);
             } else if (data.currentDocId) {
                 // була відкрита порожня чернетка — повертаємо її ж, а не старий документ
                 state.docId = data.currentDocId;
+                state.cloud = emptyCloudState();
             } else if (state.archive[0]) {
-                const last = state.archive[0];
-                state.docId = last.id;
-                state.title = last.title || '';
-                state.equipment = last.equipment || '';
-                state.mainImage = last.mainImage || null;
-                state.nodes = last.nodes || [];
+                openDocFromRecord(state.archive[0]);
             }
+        }
+
+        // Переносить документ з архіву в редактор (разом із версією у спільній базі)
+        function openDocFromRecord(doc) {
+            state.docId = doc.id;
+            state.title = doc.title || '';
+            state.equipment = doc.equipment || '';
+            state.mainImage = doc.mainImage || null;
+            state.nodes = doc.nodes || [];
+            state.cloud = Object.assign(emptyCloudState(), doc.cloud || {});
+            if (!state.cloud.photos) state.cloud.photos = {};
         }
 
         // ================= АРХІВ =================
@@ -2260,11 +2873,9 @@
         function openArchiveDoc(id) {
             const doc = state.archive.find(a => a.id === id);
             if (!doc) return;
-            state.docId = doc.id;
-            state.title = doc.title || '';
-            state.equipment = doc.equipment || '';
-            state.mainImage = doc.mainImage || null;
-            state.nodes = doc.nodes || [];
+            openDocFromRecord(doc);
+            cloudConflict = null;
+            cloudLastError = '';
             DOM.title.value = state.title;
             DOM.eq.value = state.equipment;
             saveLocal();
@@ -2295,8 +2906,11 @@
             if (id === state.docId) {
                 state.docId = crypto.randomUUID();
                 state.title = ''; state.equipment = ''; state.mainImage = null; state.nodes = [];
+                state.cloud = emptyCloudState();
+                cloudConflict = null; cloudLastError = '';
                 DOM.title.value = ''; DOM.eq.value = '';
                 saveLocal();
+                renderCloudBar();
             }
 
             renderArchive();
